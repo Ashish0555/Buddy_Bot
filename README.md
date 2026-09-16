@@ -1,43 +1,38 @@
-# 🤖 Buddy — AI-Powered Telegram Group Bot
+# Buddy Bot
 
-Buddy is a **Gen-Z style AI Telegram group bot** built for a Smash Karts community. It combines conversational AI, contextual replies, game utilities, automatic scoreboard analysis, and persistent game statistics in one serverless application.
+Buddy is an AI-powered Telegram group bot built for a Smash Karts gaming community.
 
-**Tech:** Python • Google Gemini • Telegram Bot API • Supabase • Vercel
+It combines conversational AI with game-specific automation, including Smash Karts room creation, map selection, scoreboard analysis, and player statistics.
 
----
+## Features
 
-## ✨ Features
+### AI Chat
 
-### 🧠 AI Group Chat
-- Natural English, Hindi, and Hinglish conversations
-- Understands slang, abbreviations, typos, memes, sarcasm, and casual speech
-- Matches the user's language and tone
-- Short, natural responses instead of formal assistant-style replies
-- Understands Telegram reply/quote context
-- Can participate in active group discussions without constantly spamming
-- Uses relevant recent context without dragging unrelated old conversations into replies
+- Conversational replies in English, Hindi, and Hinglish
+- Understands slang, abbreviations, typos, memes, sarcasm, and casual group-chat language
+- Matches the language and tone of the current conversation
+- Supports Telegram reply context
+- Can participate in active group discussions without responding to every message
+- Short responses designed for group conversations
 
-### 💬 Telegram Interaction
-- Responds to `@urrsbro_bot`
-- Understands replies to Buddy
-- Short follow-ups such as `ans`, `explain`, or `translate` can use the replied-to message as context
-- Runs through Telegram webhooks
+### Smash Karts
 
-### 🏎️ Smash Karts
 - Random map selection
-- Full map names and common abbreviations
+- Support for full map names and common abbreviations
 - FFA and CTF room creation
-- Timer-based and score-target rooms
+- Timer and score-target modes
 - Configurable player limits
 - FFA team mode
 - Weapon disabling
-- Canonical Smash Karts room URL generation
+- Smash Karts room URL generation
 
-### 📸 Automatic Scoreboard Analysis
-Buddy can inspect images sent directly in the group and determine whether they contain a Smash Karts scoreboard.
+### Automatic Scoreboard Processing
 
-For valid scoreboards it can extract:
-- Game mode
+Buddy can automatically inspect images sent in the group.
+
+When an image is a Smash Karts scoreboard, the bot can extract:
+
+- Match mode
 - Map
 - Player names
 - Kills
@@ -45,105 +40,89 @@ For valid scoreboards it can extract:
 - Flags
 - Team colors
 - Team scores
-- Winners / draws
+- Match result
 
-The target/crosshair column is ignored when calculating player statistics.
+Normal images are ignored.
 
-### 📊 Statistics & Leaderboards
-- Persistent player statistics with Supabase
-- Wins, losses, kills, deaths, flags
+Scoreboard screenshots do not need to mention the bot in their caption.
+
+### Player Statistics
+
+Match data is stored in Supabase and can be used for:
+
+- Wins and losses
+- Kills and deaths
 - Kill/death ratio
+- Flags
 - Match history
 - Daily, weekly, and monthly leaderboards
-- Player-specific statistics
-- Recent match lookup
-- Admin controls for players, matches, and resets
+- Individual player statistics
+- Match lookup
 
-> Scoreboard images do **not** need `@urrsbro_bot` in the caption. Buddy can process them automatically, while the full leaderboard is not posted automatically after every recorded match.
+The bot does not automatically post the leaderboard after every recorded match.
 
-### ☁️ Serverless Deployment
-- Telegram webhook architecture
-- Vercel deployment
-- Environment-variable based secrets
-- No always-running local server required
+## Tech Stack
 
----
+- Python
+- Google Gemini API
+- Telegram Bot API
+- Supabase / PostgreSQL
+- Vercel
 
-## 🛠️ Tech Stack
-
-| Technology | Purpose |
-|---|---|
-| **Python** | Core bot logic |
-| **Google Gemini API** | Conversation and image analysis |
-| **Telegram Bot API** | Group messages, photos, replies, and webhooks |
-| **Supabase / PostgreSQL** | Players, matches, statistics, memories |
-| **Vercel** | Serverless deployment |
-| **python-dotenv** | Local environment variables |
-
----
-
-## 🏗️ Architecture
+## Project Structure
 
 ```text
-Telegram Group
-      │
-      ▼
-Telegram Webhook
-      │
-      ▼
-Vercel Serverless Function
-      │
-      ├── Text
-      │    ├── Commands
-      │    ├── Map / Room Logic
-      │    └── Gemini
-      │
-      └── Image
-           │
-           ▼
-       Gemini Vision
-           │
-           ├── Normal Image → Ignore
-           │
-           └── Smash Karts Scoreboard
-                    │
-                    ▼
-                 Supabase
-                    │
-          ┌─────────┼─────────┐
-          ▼         ▼         ▼
-       Matches   Players   Memories
-```
-
----
-
-## 📁 Project Structure
-
-```text
-smash-karts-bot/
-│
+Buddy_Bot/
 ├── api/
-│   ├── index.py          # Main bot, Telegram handling, AI, stats
-│   └── room_creator.py   # Smash Karts room URL generation
-│
+│   ├── index.py
+│   └── room_creator.py
 ├── requirements.txt
 ├── .gitignore
-├── .env.local            # Local secrets; never commit
 └── README.md
 ```
 
----
+## How It Works
 
-## 🚀 Local Setup
-
-### 1. Clone
-
-```bash
-git clone https://github.com/<your-username>/<your-repository>.git
-cd <your-repository>
+```text
+Telegram Group
+      |
+      v
+Telegram Webhook
+      |
+      v
+Vercel
+      |
+      +--------------------+
+      |                    |
+      v                    v
+   Text                 Images
+      |                    |
+      v                    v
+Commands / Gemini    Gemini Vision
+      |                    |
+      |              Smash Karts?
+      |               /       \
+      |             No         Yes
+      |             |           |
+      |           Ignore        v
+      |                    Extract stats
+      |                         |
+      +-------------------------+
+                                |
+                                v
+                             Supabase
 ```
 
-### 2. Create virtual environment
+## Local Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Ashish0555/Buddy_Bot.git
+cd Buddy_Bot
+```
+
+### 2. Create a virtual environment
 
 ```bash
 python3 -m venv venv
@@ -156,7 +135,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment variables
+### 4. Add environment variables
 
 Create `.env.local`:
 
@@ -167,44 +146,23 @@ SUPABASE_URL=your_supabase_project_url
 SUPABASE_KEY=your_supabase_key
 ```
 
-**Never commit `.env.local` or API keys.**
+Never commit this file.
 
----
+## Telegram Setup
 
-## 🗄️ Supabase
+Create the bot using BotFather and add it to your Telegram group.
 
-Buddy expects database tables/functions for:
+For Buddy to process normal group messages and automatically inspect images, configure the bot's Telegram group privacy settings so the required updates are available to the bot.
 
-```text
-players
-matches
-match_players
-memories
-```
-
-The match/stat system also uses database functions for atomic operations such as recording matches, deleting matches with stat adjustment, and resetting match/stat data.
-
-Apply the SQL schema/functions from the project before deployment.
-
----
-
-## 🤖 Telegram Setup
-
-Create the bot using **@BotFather**.
-
-For automatic processing of normal group messages and photos, configure Telegram group privacy appropriately so Buddy can receive the required updates.
-
-Production webhook:
+The webhook endpoint used in production is:
 
 ```text
 https://<your-vercel-domain>/api/webhook
 ```
 
----
+## Example Commands
 
-## 💬 Commands
-
-### General
+### Chat
 
 ```text
 @urrsbro_bot kya haal bc
@@ -216,7 +174,6 @@ https://<your-vercel-domain>/api/webhook
 ```text
 @urrsbro_bot random map
 @urrsbro_bot choose a map
-@urrsbro_bot pick a map from SI, DZ, LP
 ```
 
 ### Room Creation
@@ -232,100 +189,94 @@ https://<your-vercel-domain>/api/webhook
 ```text
 @urrsbro_bot leaderboard
 @urrsbro_bot leaderboard today
-@urrsbro_bot leaderboard week
-@urrsbro_bot leaderboard month
 @urrsbro_bot stats <player>
 @urrsbro_bot recent matches
 @urrsbro_bot match <id>
 ```
 
-### Memory
-
-```text
-@urrsbro_bot remember <text>
-@urrsbro_bot forget <text>
-@urrsbro_bot what do you remember about me
-```
-
-### Admin
-
-```text
-@urrsbro_bot show admin commands
-```
-
----
-
-## 🗺️ Map Shortcuts
+## Map Shortcuts
 
 | Shortcut | Map |
 |---|---|
-| `SF` | Smash Fort |
-| `SI` | Smash Island |
-| `GP` | Gravel Pit |
-| `DZ` | Dropzone |
-| `PP` | Pinball |
-| `SD` | Showdown |
-| `TE` | Temples |
-| `T` / `TU` | Tunnels |
-| `SS` | Space Station |
-| `GY` | Graveyard |
-| `LP` | Lava Pit |
-| `SNS` | Slick 'n Slide |
+| SF | Smash Fort |
+| SI | Smash Island |
+| GP | Gravel Pit |
+| DZ | Dropzone |
+| PP | Pinball |
+| SD | Showdown |
+| TE | Temples |
+| T / TU | Tunnels |
+| SS | Space Station |
+| GY | Graveyard |
+| LP | Lava Pit |
+| SNS | Slick 'n Slide |
 
-### CTF Shortcuts
-
-```text
-SFC → Smash Fort CTF
-SIC → Smash Island CTF
-GYC → Graveyard CTF
-LPC → Lava Pit CTF
-TEC → Sky Arena Temples CTF
-TUC → Sky Arena Tunnels CTF
-```
-
----
-
-## 📸 Automatic Image Processing
-
-Users can simply send a screenshot to the group:
+CTF shortcuts:
 
 ```text
-                    Image
-                      │
-                      ▼
-                Gemini Vision
-                      │
-              ┌───────┴───────┐
-              ▼               ▼
-        Normal image      Game scoreboard
-              │               │
-           Ignore        Extract stats
-                              │
-                              ▼
-                         Save to DB
+SFC -> Smash Fort CTF
+SIC -> Smash Island CTF
+GYC -> Graveyard CTF
+LPC -> Lava Pit CTF
+TEC -> Sky Arena Temples CTF
+TUC -> Sky Arena Tunnels CTF
 ```
 
-Only recognized Smash Karts scoreboards are stored as match data.
+## Database
 
----
+Buddy uses Supabase for persistent data.
 
-## 🏆 Winner Logic
+The application works with:
 
-### FFA
+```text
+players
+matches
+match_players
+memories
+```
 
-Player(s) with the highest kills are recorded as winners.
+The match system also uses database functions for operations such as recording matches, deleting matches with stat adjustments, and resetting match data.
 
-### CTF / Team
+Apply the database schema and required functions before deployment.
 
-The application reads the two top-left team scores and applies the configured team-result logic.
+## Deployment
 
-Equal scores are recorded as a draw.
+Install the Vercel CLI:
 
----
+```bash
+npm install -g vercel@latest
+```
 
-## 🔐 Security
+Login:
 
-Add this to `.gitignore`:
+```bash
+vercel login
+```
+
+Deploy:
+
+```bash
+vercel --prod
+```
+
+Set these environment variables in Vercel:
+
+```text
+TELEGRAM_TOKEN
+GEMINI_API_KEY
+SUPABASE_URL
+SUPABASE_KEY
+```
+
+Then configure the Telegram webhook:
+
+```text
+https://<your-vercel-domain>/api/webhook
+```
+
+## Security
+
+Keep secrets out of Git:
 
 ```gitignore
 venv/
@@ -344,94 +295,47 @@ SUPABASE_KEY
 VERCEL_OIDC_TOKEN
 ```
 
-If a secret is accidentally exposed, rotate it immediately.
+If a credential is exposed, rotate it immediately.
 
----
+## Design
 
-## ☁️ Deploy on Vercel
-
-Install/update the Vercel CLI:
-
-```bash
-npm install -g vercel@latest
-```
-
-Login:
-
-```bash
-vercel login
-```
-
-Deploy:
-
-```bash
-vercel --prod
-```
-
-Configure these Vercel environment variables:
-
-```text
-TELEGRAM_TOKEN
-GEMINI_API_KEY
-SUPABASE_URL
-SUPABASE_KEY
-```
-
-Then set the Telegram webhook to:
-
-```text
-https://<your-vercel-domain>/api/webhook
-```
-
----
-
-## 🧩 Design Philosophy
-
-Buddy separates **generative AI** from **deterministic application logic**:
+Buddy keeps AI-driven behavior separate from deterministic application logic.
 
 ```text
 Gemini
-→ conversation understanding
-→ language matching
-→ image understanding
+- Conversation understanding
+- Language matching
+- Image understanding
 
 Python
-→ commands
-→ room generation
-→ map handling
-→ validation
-→ winner/stat extraction rules
+- Telegram handling
+- Commands
+- Map selection
+- Room generation
+- Validation
+- Match result logic
 
 Supabase
-→ persistent data
-→ player statistics
-→ match history
-→ optional memories
+- Player data
+- Match history
+- Statistics
+- Optional memories
 ```
 
-This keeps game-critical operations predictable while allowing natural-language interaction.
+This makes the bot flexible for conversation while keeping game-related operations predictable.
 
----
+## Future Work
 
-## 🔮 Future Improvements
-
-- Smarter group discussion participation
+- Better group discussion participation
 - Match summaries
-- Player performance insights
+- Player performance analysis
 - Per-group configuration
 - Anti-spam controls
+- More Smash Karts maps and settings
 - Admin dashboard
-- More Smash Karts maps/settings
-- Usage and analytics dashboard
 
----
+## Author
 
-## 📄 License
+Ashish Meena
 
-Add the license that matches your intended use before publishing the repository.
-
----
-
-## 👨‍💻 About
-
-Buddy was built as a real-world AI + backend project combining conversational AI, computer vision, Telegram automation, and database-backed gaming analytics.
+GitHub: https://github.com/Ashish0555
