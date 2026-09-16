@@ -4,6 +4,7 @@ Buddy is an AI-powered Telegram group bot built for a Smash Karts gaming communi
 
 It combines conversational AI with game-specific automation, including Smash Karts room creation, map selection, scoreboard analysis, and player statistics.
 
+Chat with buddy at telegram @urrsbro_bot
 ## Features
 
 ### AI Chat
