@@ -95,6 +95,29 @@ def test_chat_response_uses_gemini_and_reply_context():
     assert calls == [("decorator kya hota hai?", "previous answer")]
 
 
+def test_chat_generation_uses_short_response_instruction_and_token_headroom():
+    calls = []
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return type("Response", (), {"text": "Theek hai bhai 😂"})()
+
+    client = type(
+        "Client",
+        (),
+        {"aio": type("Aio", (), {"models": Models()})()},
+    )()
+    buddy = bot.BuddyBot(gemini_client=client)
+    reply = asyncio.run(buddy._ask_gemini_async("hello"))
+
+    assert reply == "Theek hai bhai 😂"
+    config = calls[0]["config"]
+    assert "5–20 words" in config.system_instruction
+    assert "never exceed 25 words" in config.system_instruction
+    assert config.max_output_tokens == 512
+
+
 def test_unmentioned_message_is_ignored(monkeypatch):
     buddy = bot.BuddyBot(gemini_client=object())
     calls = []

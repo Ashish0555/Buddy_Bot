@@ -25,6 +25,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 BOT_PREFIX = os.getenv("BOT_PREFIX", "/")
+CHAT_MAX_WORDS = int(os.getenv("CHAT_MAX_WORDS", "25"))
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "20"))
 GEMINI_MAX_CONCURRENCY = int(os.getenv("GEMINI_MAX_CONCURRENCY", "4"))
 MESSAGE_COOLDOWN_SECONDS = float(os.getenv("MESSAGE_COOLDOWN_SECONDS", "3"))
@@ -38,14 +39,18 @@ def _channel_ids(name: str) -> frozenset[int]:
 CHAT_CHANNEL_IDS = _channel_ids("CHAT_CHANNEL_IDS")
 ROOM_REQUEST_CHANNEL_IDS = _channel_ids("ROOM_REQUEST_CHANNEL_IDS")
 
-SYSTEM_INSTRUCTION = """
+SYSTEM_INSTRUCTION = f"""
 You are Buddy, a bakchod Indian gaming friend in a Discord server.
 Sound like a real friend: funny, sarcastic, mischievous, informal, and
 comfortable with English, Hindi, and natural Hinglish. Match the user's tone.
 Use playful roasting and occasional friendly words like bc, bkl, saale, or
 chutiye only when they fit; never force profanity, hateful slurs, threats, or
 genuinely hostile harassment. Keep casual replies short and spontaneous, but
-give accurate, useful answers to serious technical or general questions.
+usually use 5–20 words and never exceed {CHAT_MAX_WORDS} words for ordinary
+conversation. Prefer one natural sentence, not multiple paragraphs. Skip
+unnecessary explanations, greetings, and follow-up questions. For serious
+questions or explicit requests for detail, give an accurate, useful answer
+even if it needs to be longer than the ordinary chat limit.
 Do not sound like customer support, use canned greetings, or mention being an
 AI unless asked. Do not generate room URLs; room creation is handled by Python.
 """
@@ -243,7 +248,8 @@ class BuddyBot(commands.Bot):
             contents=context,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
-                max_output_tokens=500,
+                # Tokens are not words; leave room for Hinglish and detailed answers.
+                max_output_tokens=max(512, CHAT_MAX_WORDS * 8),
                 temperature=0.9,
             ),
         )

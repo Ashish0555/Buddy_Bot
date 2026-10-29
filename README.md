@@ -37,6 +37,7 @@ Set these variables in `.env`:
 DISCORD_TOKEN=your_discord_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.1-flash-lite
+CHAT_MAX_WORDS=25
 BOT_PREFIX=/
 CHAT_CHANNEL_IDS=
 ROOM_REQUEST_CHANNEL_IDS=
