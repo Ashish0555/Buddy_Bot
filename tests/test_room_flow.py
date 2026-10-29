@@ -85,14 +85,14 @@ def test_chat_response_uses_gemini_and_reply_context():
     buddy = bot.BuddyBot(gemini_client=object())
     calls = []
 
-    def fake_sync(prompt, reply_context=None):
-        calls.append((prompt, reply_context))
+    def fake_sync(prompt, reply_context=None, language=None):
+        calls.append((prompt, reply_context, language))
         return "Abe bkl, decorator samajh pehle 😂"
 
     buddy._ask_gemini_sync = fake_sync
     reply = asyncio.run(buddy.ask_gemini("decorator kya hota hai?", "previous answer"))
     assert reply.startswith("Abe bkl")
-    assert calls == [("decorator kya hota hai?", "previous answer")]
+    assert calls == [("decorator kya hota hai?", "previous answer", bot.Language.HINGLISH)]
 
 
 def test_chat_generation_uses_short_response_instruction_and_token_headroom():

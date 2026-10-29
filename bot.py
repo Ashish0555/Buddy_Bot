@@ -80,6 +80,174 @@ GEMINI_FAILURE_REPLY = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try
 DISCORD_MESSAGE_LIMIT = 2000
 
 
+class Language:
+    """Detected language/style of user message."""
+    ENGLISH = "english"
+    HINDI = "hindi"
+    HINGLISH = "hinglish"
+    OTHER = "other"
+
+
+def detect_language(text: str) -> Language:
+    """Detect the dominant language/writing style of the input text.
+
+    Returns:
+        Language.ENGLISH: Primarily English (Latin script, English words)
+        Language.HINDI: Primarily Hindi in Devanagari script
+        Language.HINGLISH: Mix of Roman Hindi/Urdu and English
+        Language.OTHER: Other languages/scripts
+    """
+    if not text or not text.strip():
+        return Language.ENGLISH
+
+    # Check for explicit language override instructions
+    lower = text.lower()
+    if re.search(r"\b(?:reply|respond|answer)\s+in\s+(english|hindi|hinglish)\b", lower):
+        lang_map = {"english": Language.ENGLISH, "hindi": Language.HINDI, "hinglish": Language.HINGLISH}
+        for k, v in lang_map.items():
+            if k in lower:
+                return v
+
+    # Count characters by script
+    devanagari = sum(1 for ch in text if "\u0900" <= ch <= "\u097F")
+    latin = sum(1 for ch in text if ch.isascii() and ch.isalpha())
+    other_alpha = sum(1 for ch in text if ch.isalpha() and not ch.isascii() and not ("\u0900" <= ch <= "\u097F"))
+
+    total_alpha = devanagari + latin + other_alpha
+    if total_alpha == 0:
+        return Language.ENGLISH
+
+    # Hindi in Devanagari
+    if devanagari / total_alpha > 0.5:
+        return Language.HINDI
+
+    # Check for Hinglish patterns (Roman Hindi words mixed with English)
+    hinglish_words = {
+        "hai", "hoon", "hain", "tha", "thi", "the", "kar", "karna", "karo", "kare",
+        "bnao", "bnado", "bnade", "bna", "de", "do", "chahiye", "chahie",
+        "kya", "kaise", "kaisa", "kaisi", "kya", "kahan", "kab", "kyun",
+        "acha", "accha", "theek", "thik", "mast", "badhiya", "badhiya",
+        "bc", "bkl", "bkl", "saale", "chutiya", "chutiye", "madarchod",
+        "bhenchod", "gaand", "lodu", "chutiya", "bakchod", "bakchodi",
+        "room", "match", "game", "play", "khel", "khelna", "khelo",
+        "map", "sf", "si", "gp", "dz", "lp", "ffa", "ctf",
+        "player", "players", "banda", "bande", "logo", "logon",
+        "timer", "minute", "score", "team", "teams", "weapon",
+        "bhai", "bhaiya", "yaar", "dost", "mitr", "behen", "behenchod",
+        "ab", "to", "toh", "le", "ye", "yeh", "wo", "woh", "wohi",
+        "aur", "or", "par", "lekin", "magar", "kyunki", "kiunki",
+        "nahi", "nhi", "na", "haan", "han", "ji", "ha", "ok", "okay",
+        "chal", "chalo", "chale", "chalta", "chalti", "chalte",
+        "dekh", "dekho", "dekha", "sun", "suno", "suna", "bol", "bolo",
+        "kya", "kaun", "kaisa", "kitna", "kitne", "kahan", "kab",
+        "mera", "meri", "mere", "tera", "teri", "tere", "uska", "uski",
+        "hamara", "hamari", "hamare", "tumhara", "tumhari", "tumhare",
+        "kuch", "kuchh", "thoda", "thodi", "thode", "bahut", "bohot",
+        "zaroor", "jarur", "zaroori", "jaruri", "chahta", "chahti", "chahte",
+        "chahiye", "chahie", "padta", "padti", "padte", "hota", "hoti", "hote",
+    }
+
+    words = set(re.findall(r"[a-zA-Z]+", text.lower()))
+    hinglish_count = sum(1 for w in words if w in hinglish_words)
+    english_words = {"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+                     "have", "has", "had", "do", "does", "did", "will", "would", "could",
+                     "should", "may", "might", "must", "can", "shall", "i", "you", "he",
+                     "she", "it", "we", "they", "me", "him", "her", "us", "them", "my",
+                     "your", "his", "her", "its", "our", "their", "this", "that", "these",
+                     "those", "and", "or", "but", "if", "then", "else", "when", "where",
+                     "why", "how", "what", "who", "which", "there", "here", "not", "no",
+                     "yes", "so", "very", "much", "many", "more", "most", "less", "least",
+                     "just", "only", "also", "even", "still", "yet", "already", "never",
+                     "always", "sometimes", "often", "usually", "rarely", "seldom"}
+    english_count = sum(1 for w in words if w in english_words)
+
+    # If significant Hinglish vocabulary present
+    if hinglish_count >= 2 and hinglish_count >= english_count:
+        return Language.HINGLISH
+
+    # If mostly English words
+    if english_count > hinglish_count and latin / total_alpha > 0.3:
+        return Language.ENGLISH
+
+    # Default to Hinglish for ambiguous short messages with Latin script
+    if latin > 0:
+        return Language.HINGLISH
+
+    return Language.OTHER
+
+
+def get_system_instruction(language: Language) -> str:
+    """Generate system instruction tailored to the detected language."""
+    base = f"""You are Buddy, a funny, sarcastic, informal gaming friend in a Discord server.
+Sound like a real friend: mischievous, comfortable with banter.
+Use playful roasting and occasional friendly words only when they fit naturally.
+Never force profanity, hateful slurs, threats, or genuinely hostile harassment.
+Keep casual replies short and spontaneous, usually 5–20 words, never exceed {CHAT_MAX_WORDS} words for ordinary conversation.
+Prefer one natural sentence, not multiple paragraphs. Skip unnecessary explanations, greetings, and follow-up questions.
+For serious questions or explicit requests for detail, give an accurate, useful answer even if longer.
+Do not sound like customer support, use canned greetings, or mention being an AI unless asked.
+Do not generate room URLs; room creation is handled by Python."""
+
+    if language == Language.ENGLISH:
+        return base + """
+Respond in natural English. Use English sarcasm, slang, and gaming banter.
+Sound like a witty English-speaking gaming buddy. Don't use Hindi words or Hinglish."""
+    elif language == Language.HINDI:
+        return base + """
+Respond in Hindi (Devanagari script). Use natural Hindi slang, gaming banter, and sarcasm.
+Sound like a Hindi-speaking gaming buddy. Don't use English or Roman Hindi."""
+    elif language == Language.HINGLISH:
+        return base + """
+Respond in natural Hinglish (Roman Hindi/Urdu mixed with English).
+Sound like a bakchod Indian gaming friend: funny, sarcastic, mischievous, informal.
+Use playful roasting with words like bc, bkl, saale, chutiye only when they fit naturally.
+Mix English and Hindi naturally like a real Indian gamer would. Don't force it."""
+    else:
+        return base + """
+Respond in the user's language. Match their tone and writing style naturally."""
+
+
+def get_room_responses(language: Language) -> tuple[str, ...]:
+    """Get room creation response templates for the given language."""
+    if language == Language.ENGLISH:
+        return (
+            "Here's your {map_name} room, noob 😂",
+            "Room created. Try not to suck this time 💀",
+            "Here's your {map_name} room, enjoy getting wrecked.",
+            "Room ready. Don't come crying when you lose 😂",
+            "Got your room ready. Try to get some kills at least.",
+            "Why do I always have to make rooms for you? 🤧",
+        )
+    elif language == Language.HINDI:
+        return (
+            "ले बे {map_name} का रूम, खेल ले 😂",
+            "रूम बना दिया, अब हार मत जाना 💀",
+            "अबे नूब, ये ले तेरा {map_name} रूम।",
+            "रूम रेडी है, अब कुछ किल्स भी कर ले 😂",
+            "ले भाई, रूम बना दिया। अब रोना मत हार के।",
+            "साले हर बार मुझे ही रूम बनाना पड़ता है 🤧",
+        )
+    else:  # HINGLISH or OTHER
+        return (
+            "Le bkl {map_name} khel tu 😂",
+            "Le bc room bana diya, ab haarne mat lag jaana 💀",
+            "Abe noob, ye le tera {map_name} room.",
+            "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
+            "Le bhai, room bana diya. Ab rona mat haar ke.",
+            "Saale har baar mujhe hi room banana padta hai 🤧",
+        )
+
+
+def get_failure_reply(language: Language) -> str:
+    """Get failure reply for the given language."""
+    if language == Language.ENGLISH:
+        return "Buddy's brain froze, try again in a bit 💀"
+    elif language == Language.HINDI:
+        return "बडी का दिमाग हैंग हो गया, थोड़ी देर बाद ट्राई कर 💀"
+    else:  # HINGLISH or OTHER
+        return "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
+
+
 def extract_response_text(response) -> str | None:
     text = getattr(response, "text", None)
     if text:
@@ -202,37 +370,37 @@ class BuddyBot(commands.Bot):
         return False
 
     async def extract_room_intent(self, prompt: str) -> RoomIntent | None:
+        schema = RoomIntent.model_json_schema()
+        schema.pop("additionalProperties", None)
         response = await self._gemini().aio.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=ROOM_INTENT_INSTRUCTION,
                 response_mime_type="application/json",
-                response_schema=RoomIntent,
+                response_json_schema=schema,
                 max_output_tokens=220,
                 temperature=0,
             ),
         )
-        parsed = getattr(response, "parsed", None)
-        if isinstance(parsed, RoomIntent):
-            return parsed
-        if isinstance(parsed, dict):
-            return RoomIntent.model_validate(parsed)
         text = extract_response_text(response)
-        return RoomIntent.model_validate_json(text) if text else None
+        if text:
+            return RoomIntent.model_validate_json(text)
+        return None
 
     async def create_room_reply(self, prompt: str) -> str | None:
+        language = detect_language(prompt)
         try:
             intent = await self._run_gemini(self.extract_room_intent, prompt)
         except Exception as exc:
             print("Room intent error:", repr(exc))
-            return ROOM_FAILURE_REPLY
+            return get_failure_reply(language)
         if intent is None or not intent.is_room_request:
             return None
         try:
             url = create_room_from_intent(intent)
             map_name = intent.map or "random map"
-            sentence = random.choice(ROOM_RESPONSES).format(map_name=map_name)
+            sentence = random.choice(get_room_responses(language)).format(map_name=map_name)
             return f"{sentence}\n{url}"
         except RoomIntentError as exc:
             return str(exc)
@@ -241,6 +409,7 @@ class BuddyBot(commands.Bot):
         self,
         prompt: str,
         reply_context: str | None = None,
+        language: Language = Language.HINGLISH,
     ) -> str:
         context = prompt
         if reply_context:
@@ -249,23 +418,23 @@ class BuddyBot(commands.Bot):
             model=GEMINI_MODEL,
             contents=context,
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
+                system_instruction=get_system_instruction(language),
                 # Tokens are not words; leave room for Hinglish and detailed answers.
                 max_output_tokens=max(512, CHAT_MAX_WORDS * 8),
                 temperature=0.9,
             ),
         )
-        return extract_response_text(response) or GEMINI_FAILURE_REPLY
+        return extract_response_text(response) or get_failure_reply(language)
 
-    async def ask_gemini(self, prompt: str, reply_context: str | None = None) -> str:
+    async def ask_gemini(self, prompt: str, reply_context: str | None = None, language: Language = Language.HINGLISH) -> str:
         # Kept as a test seam for existing mocked tests; production uses the async SDK.
         test_operation = self.__dict__.get("_ask_gemini_sync")
         operation = test_operation or self._ask_gemini_async
         try:
-            return await self._run_gemini(operation, prompt, reply_context)
+            return await self._run_gemini(operation, prompt, reply_context, language)
         except Exception as exc:
             print("Gemini request error:", repr(exc))
-            return GEMINI_FAILURE_REPLY
+            return get_failure_reply(language)
 
     async def _referenced_message(self, message: discord.Message):
         reference = getattr(message, "reference", None)
@@ -319,6 +488,7 @@ class BuddyBot(commands.Bot):
     ):
         if self._on_cooldown(message):
             return
+        language = detect_language(prompt)
         typing = getattr(message.channel, "typing", None)
         async with (typing() if typing else _noop_typing()):
             try:
@@ -330,11 +500,11 @@ class BuddyBot(commands.Bot):
                     if not allow_chat:
                         return
                 if allow_chat:
-                    reply = await self.ask_gemini(prompt, reply_context)
+                    reply = await self.ask_gemini(prompt, reply_context, language)
                     await self._send_reply(message, reply)
             except Exception as exc:
                 print("Buddy request error:", repr(exc))
-                await self._send_reply(message, GEMINI_FAILURE_REPLY)
+                await self._send_reply(message, get_failure_reply(language))
 
     async def on_message(self, message: discord.Message):
         if message.author.bot:
@@ -377,22 +547,24 @@ bot = BuddyBot()
 async def ask_command(interaction: discord.Interaction, question: str):
     try:
         await interaction.response.defer()
-        reply = await bot.ask_gemini(question)
+        language = detect_language(question)
+        reply = await bot.ask_gemini(question, language=language)
         await send_interaction_text(interaction, reply)
     except Exception as exc:
         print("Slash ask error:", repr(exc))
         if interaction.response.is_done():
-            await interaction.followup.send(GEMINI_FAILURE_REPLY)
+            await interaction.followup.send(get_failure_reply(language))
         else:
-            await interaction.response.send_message(GEMINI_FAILURE_REPLY)
+            await interaction.response.send_message(get_failure_reply(language))
 
 
 @bot.tree.command(name="room", description="Create a Smash Karts room")
 async def room_command(interaction: discord.Interaction, request: str):
     try:
         await interaction.response.defer()
+        language = detect_language(request)
         reply = await bot.create_room_reply(request)
-        reply = reply or "Abe room ka request toh de, mind-reader nahi hoon 💀"
+        reply = reply or ("Abe room ka request toh de, mind-reader nahi hoon 💀" if language != Language.ENGLISH else "Give me a room request, I'm not a mind reader 💀")
         await interaction.followup.send(
             reply,
             allowed_mentions=discord.AllowedMentions.none(),
@@ -400,9 +572,9 @@ async def room_command(interaction: discord.Interaction, request: str):
     except Exception as exc:
         print("Slash room error:", repr(exc))
         if interaction.response.is_done():
-            await interaction.followup.send(ROOM_FAILURE_REPLY)
+            await interaction.followup.send(get_failure_reply(language))
         else:
-            await interaction.response.send_message(ROOM_FAILURE_REPLY)
+            await interaction.response.send_message(get_failure_reply(language))
 
 
 def main():
