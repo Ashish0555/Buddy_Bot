@@ -80,7 +80,10 @@ GEMINI_FAILURE_REPLY = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try
 DISCORD_MESSAGE_LIMIT = 2000
 
 
-class Language:
+from enum import StrEnum
+
+
+class Language(StrEnum):
     """Detected language/style of user message."""
     ENGLISH = "english"
     HINDI = "hindi"
