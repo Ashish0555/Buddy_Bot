@@ -65,12 +65,141 @@ def test_discord_message_handler_replies_to_mention(monkeypatch):
 
     class Author:
         bot = False
+        id = 456
+
+    class Channel:
+        id = 789
 
     class Message:
         author = Author()
+        channel = Channel()
         content = "<@123> bhai room bnade"
         reference = None
 
     asyncio.run(buddy.on_message(Message()))
     assert len(calls) == 1
     assert calls[0][1] == "bhai room bnade"
+
+
+def test_chat_response_uses_gemini_and_reply_context():
+    buddy = bot.BuddyBot(gemini_client=object())
+    calls = []
+
+    def fake_sync(prompt, reply_context=None):
+        calls.append((prompt, reply_context))
+        return "Abe bkl, decorator samajh pehle 😂"
+
+    buddy._ask_gemini_sync = fake_sync
+    reply = asyncio.run(buddy.ask_gemini("decorator kya hota hai?", "previous answer"))
+    assert reply.startswith("Abe bkl")
+    assert calls == [("decorator kya hota hai?", "previous answer")]
+
+
+def test_unmentioned_message_is_ignored(monkeypatch):
+    buddy = bot.BuddyBot(gemini_client=object())
+    calls = []
+
+    async def fake_handle(message, prompt):
+        calls.append(prompt)
+
+    monkeypatch.setattr(buddy, "handle_prompt", fake_handle)
+
+    class Author:
+        bot = False
+        id = 456
+
+    class Channel:
+        id = 789
+
+    class Message:
+        author = Author()
+        channel = Channel()
+        content = "normal group chatter"
+        reference = None
+
+    asyncio.run(buddy.on_message(Message()))
+    assert calls == []
+
+
+def test_auto_chat_channel_routes_without_mention(monkeypatch):
+    buddy = bot.BuddyBot(gemini_client=object())
+    monkeypatch.setattr(bot, "AUTO_CHAT_CHANNEL_IDS", frozenset({789}))
+    calls = []
+
+    async def fake_handle(message, prompt):
+        calls.append(prompt)
+
+    monkeypatch.setattr(buddy, "handle_prompt", fake_handle)
+
+    class Author:
+        bot = False
+        id = 456
+
+    class Channel:
+        id = 789
+
+    class Message:
+        author = Author()
+        channel = Channel()
+        content = "bhai kya haal hai"
+        reference = None
+
+    asyncio.run(buddy.on_message(Message()))
+    assert calls == ["bhai kya haal hai"]
+
+
+def test_bot_messages_are_ignored():
+    buddy = bot.BuddyBot(gemini_client=object())
+    calls = []
+
+    async def fake_handle(message, prompt):
+        calls.append(prompt)
+
+    buddy.handle_prompt = fake_handle
+
+    class Author:
+        bot = True
+        id = 456
+
+    class Channel:
+        id = 789
+
+    class Message:
+        author = Author()
+        channel = Channel()
+        content = "<@123> hello"
+        reference = None
+
+    asyncio.run(buddy.on_message(Message()))
+    assert calls == []
+
+
+def test_gemini_failure_returns_friendly_error():
+    buddy = bot.BuddyBot(gemini_client=object())
+
+    def fail(*args):
+        raise TimeoutError("timed out")
+
+    buddy._ask_gemini_sync = fail
+    async def no_room(prompt):
+        return None
+
+    buddy.create_room_reply = no_room
+    replies = []
+
+    class Author:
+        bot = False
+        id = 456
+
+    class Channel:
+        id = 789
+
+    class Message:
+        author = Author()
+        channel = Channel()
+
+        async def reply(self, text, mention_author=False):
+            replies.append(text)
+
+    asyncio.run(buddy.handle_prompt(Message(), "hello"))
+    assert replies == ["Brain.exe crashed 💀"]

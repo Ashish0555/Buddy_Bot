@@ -37,11 +37,21 @@ Set these variables in `.env`:
 DISCORD_TOKEN=your_discord_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 BOT_PREFIX=/
+AUTO_CHAT_CHANNEL_IDS=
+ROOM_REQUEST_CHANNEL_IDS=
+GEMINI_TIMEOUT_SECONDS=20
+GEMINI_MAX_CONCURRENCY=4
+MESSAGE_COOLDOWN_SECONDS=3
 ```
 
 Enable the **Message Content Intent** for the Discord application in the
 Developer Portal. Invite the bot with permissions to read messages and send
-messages.
+messages. Mentions and replies always work. Set `AUTO_CHAT_CHANNEL_IDS` to
+comma-separated channel IDs where Buddy should answer without a mention, and
+`ROOM_REQUEST_CHANNEL_IDS` for channels dedicated to room requests.
+
+Gemini calls run off Discord's event loop, with a timeout, bounded concurrency,
+and a per-user/channel cooldown to prevent duplicate bursts and bot loops.
 
 ## Run
 
