@@ -95,7 +95,7 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
 
     if intent.round_format is None:
         round_format = "timer"
-        value = 10
+        value = intent.value if intent.value is not None else 10
     else:
         round_format = intent.round_format
         if intent.value is None:

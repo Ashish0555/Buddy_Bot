@@ -134,6 +134,15 @@ async def _noop_typing():
     yield
 
 
+async def send_interaction_text(interaction: discord.Interaction, text: str):
+    """Send a deferred interaction response in Discord-sized chunks."""
+    for chunk in split_discord_text(text):
+        await interaction.followup.send(
+            chunk,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+
 class BuddyBot(commands.Bot):
     def __init__(self, *, gemini_client=None):
         intents = discord.Intents.default()
@@ -361,10 +370,7 @@ async def ask_command(interaction: discord.Interaction, question: str):
     try:
         await interaction.response.defer()
         reply = await bot.ask_gemini(question)
-        await interaction.followup.send(
-            reply,
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
+        await send_interaction_text(interaction, reply)
     except Exception as exc:
         print("Slash ask error:", repr(exc))
         if interaction.response.is_done():

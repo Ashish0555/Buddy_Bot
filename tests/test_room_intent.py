@@ -57,6 +57,12 @@ def test_four_players_twenty_minutes_defaults_to_ffa_teams():
     assert room["value"] == 20
 
 
+def test_explicit_timer_value_without_format_is_preserved():
+    room = resolve("sf", players=4, value=20)
+    assert room["round_format"] == "timer"
+    assert room["value"] == 20
+
+
 def test_invalid_player_count_is_helpful():
     with pytest.raises(RoomIntentError, match="Player count"):
         resolve("sf", players=5)

@@ -262,3 +262,23 @@ def test_long_chat_response_is_split_without_truncation(monkeypatch):
     assert len(message.replies[0]) <= 2000
     combined = "".join(message.replies + message.channel.sent)
     assert combined.replace(" ", "") == text.strip().replace(" ", "")
+
+
+def test_deferred_ask_response_is_split_into_followups():
+    class Followup:
+        def __init__(self):
+            self.messages = []
+
+        async def send(self, content, **kwargs):
+            self.messages.append(content)
+
+    class Interaction:
+        def __init__(self):
+            self.followup = Followup()
+
+    interaction = Interaction()
+    text = "word " * 900
+    asyncio.run(bot.send_interaction_text(interaction, text))
+    assert len(interaction.followup.messages) > 1
+    assert all(len(message) <= 2000 for message in interaction.followup.messages)
+    assert "".join(interaction.followup.messages).replace(" ", "") == text.strip().replace(" ", "")
