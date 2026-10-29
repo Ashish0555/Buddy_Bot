@@ -40,7 +40,8 @@ CHAT_CHANNEL_IDS = _channel_ids("CHAT_CHANNEL_IDS")
 ROOM_REQUEST_CHANNEL_IDS = _channel_ids("ROOM_REQUEST_CHANNEL_IDS")
 
 SYSTEM_INSTRUCTION = f"""
-You are Buddy, a bakchod Indian gaming friend in a Discord server.
+You are Buddy, a bakchod Indian gaming friend in a Discord server, who speaks English ,Hinglish,hindi, tamil , talugu.
+always reply in user/query language.
 Sound like a real friend: funny, sarcastic, mischievous, informal, and
 comfortable with English, Hindi, and natural Hinglish. Match the user's tone.
 Use playful roasting and occasional friendly words like bc, bkl, saale, or
@@ -238,6 +239,46 @@ def get_room_responses(language: Language) -> tuple[str, ...]:
             "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
             "Le bhai, room bana diya. Ab rona mat haar ke.",
             "Saale har baar mujhe hi room banana padta hai 🤧",
+             "Le bkl, {map_name} ready hai, ab khel bhi le 😂",
+            "Abe bc room bana diya, ab haar ke rona mat ",
+            "Le saale, {map_name} pe apni aukaat dikha.",
+            "Room ready hai chutiye, ab kills bhi kar lena 😂",
+            "Abe noob, ye le tera room, ab nikal game mein.",
+           "Le bhai {map_name}, ab pro banke dikha 💀",
+            "Bkl room bana diya, ab mujhe tang mat kar.",
+            "Abe lodu, {map_name} pe aaj tera test hai 😂",
+          "Le bc, room ready hai, ab respawn simulator mat khelna.",
+            "Saale room bhi main banau, kills bhi main karu kya?",
+             "Ye le tera {map_name}, ab hagna mat game mein ",
+           "Abe champion, room ready hai, aim bhi le aana.",
+           "Le bkl, {map_name} pe aaj teri pitai hogi 😂",
+            "Room bana diya bc, ab internet ko blame mat karna.",
+          "Le saale, room ready, ab jaldi join kar.",
+          "Abe noobde, {map_name} pe thoda dhang se khelna.",
+             "Le bhai, room mil gaya, ab skill kahan se layega? ",
+           "Bkl tera {map_name} ready hai, ab jaldi ghus.",
+            "Abe bc, room khol diya, ab faltu bakchodi band.",
+           "Le chutiye, room ready, ab team ko mat dubana 😂",
+          "Saale {map_name} bana diya, ab MVP banke dikha.",
+           "Le bc, ab enemy ko maarna, khud ko nahi ",
+              "Abe room ready hai, ab bas lobby mein mat baitha reh.",
+             "Le bkl, {map_name} pe tera career khatre mein hai 😂",
+           "Room de diya saale, ab gameplay se sharminda mat karna.",
+          "Abe bc, aaj toh {map_name} pe tabahi macha de.",
+           "Le noob, room bana diya, ab killfeed mein bhi dikhna.",
+            "Bkl room ready hai, ab mouse ko dosh mat dena ",
+             "Abe saale, {map_name} pe aaj teri training hogi.",
+           "Le bhai, room ban gaya, ab jeet ke aana 😂",
+           "Chal bc {map_name} ready hai, ab lobby bhar.",
+          "Abe bkl, room toh mil gaya, skill kab aayegi?",
+                "Le saale, {map_name} pe ja aur thodi izzat kama.",
+            "Room ready bc, ab harne ke naye bahane mat banana.",
+            "Abe noob, tera {map_name} setup ho gaya ",
+            "Le bkl, ab game mein bhi itna hi bolna 😂",
+            "Saale room bana diya, ab opponent ko bhi kuch karne dena.",
+            "Abe bc, {map_name} khul gaya, ab hero ban ja.",
+            "Le chutiye, room ready, ab scoreboard mein zero mat lana.",
+            "Bkl ye le tera room, ab chupchap khel 😂",
         )
 
 
