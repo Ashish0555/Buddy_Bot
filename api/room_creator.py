@@ -145,8 +145,6 @@ def encode_mode(
 # WEAPON ENCODING
 # ------------------------------------------------------------------
 
-DEFAULT_WEAPONS = 159_212
-
 WEAPON_BITS = {
     "machine_gun": 4,
     "rocket": 8,
@@ -161,6 +159,9 @@ WEAPON_BITS = {
     "snowball_blaster": 131_072,
     "lob_sentry": 8_388_608,
 }
+
+# Game default: all weapons ON except Lob Sentry (8388608)
+DEFAULT_WEAPONS = sum(WEAPON_BITS.values()) - WEAPON_BITS["lob_sentry"]
 
 WEAPON_ALIASES = {
     "machine gun": "machine_gun",

@@ -97,7 +97,7 @@ def is_room_request_candidate(text: str) -> bool:
 
     room_nouns = r"(?:room|match|game)"
     action_words = (
-        r"(?:bana(?:\s+de)?|bnade|bnado|bna\s+de|create|make|khol(?:\s+de)?|"
+        r"(?:bana(?:\s+de)?|bnade|bnado|bna\s+de|bnao|create|make|khol(?:\s+de)?|"
         r"open|start|chahiye|karo|kar\s+do|de\s+de)"
     )
     if re.search(rf"\b{room_nouns}\b.*\b{action_words}\b", normalized):
@@ -111,6 +111,8 @@ def is_room_request_candidate(text: str) -> bool:
         r"(?:sf|si|gp|dz|lp|dropzone|lava\s+pit|smash\s+fort|smash\s+island)\b",
         normalized,
     ):
+        return True
+    if re.search(r"\b(?:ctf|ffa)\b.*\b(?:khel(?:na)?|play)\b", normalized):
         return True
     if re.search(r"\b\d+\s*(?:player|players|bande|bandon|logo|logon)\b.*\broom\b", normalized):
         return True

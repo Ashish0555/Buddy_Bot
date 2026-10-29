@@ -34,7 +34,7 @@ except ImportError:
 class RoomIntent(BaseModel):
     """Gemini's explicit room-request extraction."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     is_room_request: bool
     map: str | None = None
