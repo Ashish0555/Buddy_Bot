@@ -54,7 +54,7 @@ def test_discord_message_handler_replies_to_mention(monkeypatch):
     )
     calls = []
 
-    async def fake_handle(message, prompt):
+    async def fake_handle(message, prompt, **kwargs):
         calls.append((message, prompt))
 
     monkeypatch.setattr(buddy, "handle_prompt", fake_handle)
@@ -99,7 +99,7 @@ def test_unmentioned_message_is_ignored(monkeypatch):
     buddy = bot.BuddyBot(gemini_client=object())
     calls = []
 
-    async def fake_handle(message, prompt):
+    async def fake_handle(message, prompt, **kwargs):
         calls.append(prompt)
 
     monkeypatch.setattr(buddy, "handle_prompt", fake_handle)
@@ -123,10 +123,10 @@ def test_unmentioned_message_is_ignored(monkeypatch):
 
 def test_auto_chat_channel_routes_without_mention(monkeypatch):
     buddy = bot.BuddyBot(gemini_client=object())
-    monkeypatch.setattr(bot, "AUTO_CHAT_CHANNEL_IDS", frozenset({789}))
+    monkeypatch.setattr(bot, "CHAT_CHANNEL_IDS", frozenset({789}))
     calls = []
 
-    async def fake_handle(message, prompt):
+    async def fake_handle(message, prompt, **kwargs):
         calls.append(prompt)
 
     monkeypatch.setattr(buddy, "handle_prompt", fake_handle)
@@ -198,8 +198,8 @@ def test_gemini_failure_returns_friendly_error():
         author = Author()
         channel = Channel()
 
-        async def reply(self, text, mention_author=False):
+        async def reply(self, text, mention_author=False, allowed_mentions=None):
             replies.append(text)
 
     asyncio.run(buddy.handle_prompt(Message(), "hello"))
-    assert replies == ["Brain.exe crashed 💀"]
+    assert replies == [bot.GEMINI_FAILURE_REPLY]

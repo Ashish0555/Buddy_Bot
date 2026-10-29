@@ -36,8 +36,9 @@ Set these variables in `.env`:
 ```env
 DISCORD_TOKEN=your_discord_bot_token
 GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-3.1-flash-lite
 BOT_PREFIX=/
-AUTO_CHAT_CHANNEL_IDS=
+CHAT_CHANNEL_IDS=
 ROOM_REQUEST_CHANNEL_IDS=
 GEMINI_TIMEOUT_SECONDS=20
 GEMINI_MAX_CONCURRENCY=4
@@ -46,12 +47,15 @@ MESSAGE_COOLDOWN_SECONDS=3
 
 Enable the **Message Content Intent** for the Discord application in the
 Developer Portal. Invite the bot with permissions to read messages and send
-messages. Mentions and replies always work. Set `AUTO_CHAT_CHANNEL_IDS` to
-comma-separated channel IDs where Buddy should answer without a mention, and
-`ROOM_REQUEST_CHANNEL_IDS` for channels dedicated to room requests.
+messages. Mentions and replies always work. Set `CHAT_CHANNEL_IDS` to
+comma-separated channel IDs where Buddy should answer normal messages without
+a mention, and `ROOM_REQUEST_CHANNEL_IDS` for channels dedicated to room
+requests. A channel can appear in both lists.
 
-Gemini calls run off Discord's event loop, with a timeout, bounded concurrency,
-and a per-user/channel cooldown to prevent duplicate bursts and bot loops.
+Gemini calls use the SDK's asynchronous client with an HTTP timeout, bounded
+concurrency, and a per-user/channel cooldown to prevent duplicate bursts and
+bot loops. A timed-out request is cancelled at the asyncio task boundary; the
+SDK/network layer determines whether its underlying transport cancels.
 
 ## Run
 

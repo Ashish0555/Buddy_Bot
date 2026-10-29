@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+import inspect
 import os
 import random
-import asyncio
+import re
 import time
 from collections.abc import Callable
 
@@ -20,6 +23,7 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 BOT_PREFIX = os.getenv("BOT_PREFIX", "/")
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "20"))
 GEMINI_MAX_CONCURRENCY = int(os.getenv("GEMINI_MAX_CONCURRENCY", "4"))
@@ -31,7 +35,7 @@ def _channel_ids(name: str) -> frozenset[int]:
     return frozenset(int(value.strip()) for value in values.split(",") if value.strip())
 
 
-AUTO_CHAT_CHANNEL_IDS = _channel_ids("AUTO_CHAT_CHANNEL_IDS")
+CHAT_CHANNEL_IDS = _channel_ids("CHAT_CHANNEL_IDS")
 ROOM_REQUEST_CHANNEL_IDS = _channel_ids("ROOM_REQUEST_CHANNEL_IDS")
 
 SYSTEM_INSTRUCTION = """
@@ -63,8 +67,12 @@ ROOM_RESPONSES = (
     "Abe noob, ye le tera {map_name} room.",
     "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
     "Le bhai, room bana diya. Ab rona mat haar ke.",
-    "Saale har baar mujhe hi room banana padta hai🤧 ",
+    "Saale har baar mujhe hi room banana padta hai 🤧",
 )
+
+ROOM_FAILURE_REPLY = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
+GEMINI_FAILURE_REPLY = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
+DISCORD_MESSAGE_LIMIT = 2000
 
 
 def extract_response_text(response) -> str | None:
@@ -72,6 +80,58 @@ def extract_response_text(response) -> str | None:
     if text:
         return text.strip() or None
     return None
+
+
+def is_room_request_candidate(text: str) -> bool:
+    """Cheap gate that avoids an intent API call for ordinary conversation."""
+    normalized = " ".join(text.casefold().split())
+    if re.search(r"\b(?:banaya|banaaya|made|created)\s+tha\b", normalized):
+        return False
+    if re.search(r"\b(?:room|match)\b.*\b(?:kaise|how|system|meaning)\b", normalized):
+        return False
+
+    room_nouns = r"(?:room|match|game)"
+    action_words = (
+        r"(?:bana(?:\s+de)?|bnade|bnado|bna\s+de|create|make|khol(?:\s+de)?|"
+        r"open|start|chahiye|karo|kar\s+do|de\s+de)"
+    )
+    if re.search(rf"\b{room_nouns}\b.*\b{action_words}\b", normalized):
+        return True
+    if re.search(rf"\b{action_words}\b.*\b{room_nouns}\b", normalized):
+        return True
+    if re.search(r"\b(?:random|ctf|ffa)\s+(?:map\s+pe\s+)?(?:room|match)\b", normalized):
+        return True
+    if re.search(
+        r"\b(?:ctf|ffa)\b.*\b(?:khel(?:na)?|play)\b.*\b"
+        r"(?:sf|si|gp|dz|lp|dropzone|lava\s+pit|smash\s+fort|smash\s+island)\b",
+        normalized,
+    ):
+        return True
+    if re.search(r"\b\d+\s*(?:player|players|bande|bandon|logo|logon)\b.*\broom\b", normalized):
+        return True
+    if re.search(r"\b(?:sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b.*\broom\b", normalized):
+        return True
+    return False
+
+
+def split_discord_text(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
+    """Split long output at whitespace without silently truncating it."""
+    chunks = []
+    remaining = text.strip()
+    while len(remaining) > limit:
+        cut = remaining.rfind(" ", 0, limit)
+        if cut <= 0:
+            cut = limit
+        chunks.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks or [""]
+
+
+@asynccontextmanager
+async def _noop_typing():
+    yield
 
 
 class BuddyBot(commands.Bot):
@@ -90,11 +150,16 @@ class BuddyBot(commands.Bot):
         if self.gemini_client is None:
             if not GEMINI_API_KEY:
                 raise RuntimeError("GEMINI_API_KEY is not configured.")
-            self.gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+            self.gemini_client = genai.Client(
+                api_key=GEMINI_API_KEY,
+                http_options=types.HttpOptions(
+                    timeout=int(GEMINI_TIMEOUT_SECONDS * 1000),
+                ),
+            )
         return self.gemini_client
 
     async def _run_gemini(self, operation: Callable, *args):
-        """Run the synchronous Gemini SDK without blocking Discord's loop."""
+        """Bound and time an SDK request; cancellation depends on SDK support."""
         try:
             await asyncio.wait_for(
                 self._gemini_slots.acquire(),
@@ -104,10 +169,10 @@ class BuddyBot(commands.Bot):
             raise RuntimeError("Buddy is busy, try again in a moment 💀") from exc
 
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(operation, *args),
-                timeout=GEMINI_TIMEOUT_SECONDS,
-            )
+            result = operation(*args)
+            if inspect.isawaitable(result):
+                return await asyncio.wait_for(result, timeout=GEMINI_TIMEOUT_SECONDS)
+            return result
         finally:
             self._gemini_slots.release()
 
@@ -120,9 +185,9 @@ class BuddyBot(commands.Bot):
         self._cooldowns[key] = now
         return False
 
-    def extract_room_intent(self, prompt: str) -> RoomIntent | None:
-        response = self._gemini().models.generate_content(
-            model="gemini-3.1-flash-lite",
+    async def extract_room_intent(self, prompt: str) -> RoomIntent | None:
+        response = await self._gemini().aio.models.generate_content(
+            model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=ROOM_INTENT_INSTRUCTION,
@@ -145,7 +210,7 @@ class BuddyBot(commands.Bot):
             intent = await self._run_gemini(self.extract_room_intent, prompt)
         except Exception as exc:
             print("Room intent error:", repr(exc))
-            return None
+            return ROOM_FAILURE_REPLY
         if intent is None or not intent.is_room_request:
             return None
         try:
@@ -156,12 +221,16 @@ class BuddyBot(commands.Bot):
         except RoomIntentError as exc:
             return str(exc)
 
-    def _ask_gemini_sync(self, prompt: str, reply_context: str | None = None) -> str:
+    async def _ask_gemini_async(
+        self,
+        prompt: str,
+        reply_context: str | None = None,
+    ) -> str:
         context = prompt
         if reply_context:
             context = f"Message being replied to:\n{reply_context}\n\nUser:\n{prompt}"
-        response = self._gemini().models.generate_content(
-            model="gemini-3.1-flash-lite",
+        response = await self._gemini().aio.models.generate_content(
+            model=GEMINI_MODEL,
             contents=context,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
@@ -169,53 +238,119 @@ class BuddyBot(commands.Bot):
                 temperature=0.9,
             ),
         )
-        return extract_response_text(response) or "Brain.exe crashed 💀"
+        return extract_response_text(response) or GEMINI_FAILURE_REPLY
 
     async def ask_gemini(self, prompt: str, reply_context: str | None = None) -> str:
-        return await self._run_gemini(self._ask_gemini_sync, prompt, reply_context)
+        # Kept as a test seam for existing mocked tests; production uses the async SDK.
+        test_operation = self.__dict__.get("_ask_gemini_sync")
+        operation = test_operation or self._ask_gemini_async
+        try:
+            return await self._run_gemini(operation, prompt, reply_context)
+        except Exception as exc:
+            print("Gemini request error:", repr(exc))
+            return GEMINI_FAILURE_REPLY
 
-    async def handle_prompt(self, message: discord.Message, prompt: str):
+    async def _referenced_message(self, message: discord.Message):
+        reference = getattr(message, "reference", None)
+        if reference is None:
+            return None
+        resolved = getattr(reference, "resolved", None)
+        if resolved is not None:
+            return resolved
+        message_id = getattr(reference, "message_id", None)
+        if message_id is None:
+            return None
+        try:
+            return await message.channel.fetch_message(message_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+            print("Reply reference unavailable:", repr(exc))
+            return None
+
+    async def _reply_is_to_buddy(self, message: discord.Message) -> tuple[bool, str | None]:
+        referenced = await self._referenced_message(message)
+        if referenced is None or self.user is None:
+            return False, None
+        author = getattr(referenced, "author", None)
+        return (
+            getattr(author, "id", None) == self.user.id,
+            getattr(referenced, "content", None),
+        )
+
+    async def _send_reply(self, message: discord.Message, text: str):
+        chunks = split_discord_text(text)
+        for index, chunk in enumerate(chunks):
+            if index == 0:
+                await message.reply(
+                    chunk,
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            else:
+                await message.channel.send(
+                    chunk,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+
+    async def handle_prompt(
+        self,
+        message: discord.Message,
+        prompt: str,
+        *,
+        allow_chat: bool = True,
+        allow_room: bool = True,
+        reply_context: str | None = None,
+    ):
         if self._on_cooldown(message):
             return
-        try:
-            room_reply = await self.create_room_reply(prompt)
-            reply = room_reply or await self.ask_gemini(
-                prompt,
-                getattr(getattr(message, "reference", None), "resolved", None)
-                and getattr(message.reference.resolved, "content", None),
-            )
-        except Exception as exc:
-            print("Buddy request error:", repr(exc))
-            reply = "Brain.exe crashed 💀"
-        await message.reply(reply, mention_author=False)
+        typing = getattr(message.channel, "typing", None)
+        async with (typing() if typing else _noop_typing()):
+            try:
+                if allow_room and is_room_request_candidate(prompt):
+                    room_reply = await self.create_room_reply(prompt)
+                    if room_reply is not None:
+                        await self._send_reply(message, room_reply)
+                        return
+                    if not allow_chat:
+                        return
+                if allow_chat:
+                    reply = await self.ask_gemini(prompt, reply_context)
+                    await self._send_reply(message, reply)
+            except Exception as exc:
+                print("Buddy request error:", repr(exc))
+                await self._send_reply(message, GEMINI_FAILURE_REPLY)
 
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
 
-        prompt = message.content
-        mentioned = self.user is not None and (
-            self.user.mention in prompt
-            or f"<@!{self.user.id}>" in prompt
-        )
-        replied_to_buddy = (
-            getattr(message.reference, "resolved", None) is not None
-            and getattr(
-                getattr(message.reference.resolved, "author", None),
-                "id",
-                None,
-            )
-            == getattr(self.user, "id", None)
-        )
-        auto_chat = message.channel.id in AUTO_CHAT_CHANNEL_IDS
-        room_channel = message.channel.id in ROOM_REQUEST_CHANNEL_IDS
-        if not mentioned and not replied_to_buddy and not auto_chat and not room_channel:
+        prompt = message.content or ""
+        mentioned = False
+        if self.user is not None:
+            mentioned = self.user.mention in prompt or f"<@!{self.user.id}>" in prompt
+        replied_to_buddy, reply_context = await self._reply_is_to_buddy(message)
+        addressed = mentioned or replied_to_buddy
+        channel_id = message.channel.id
+        configured_chat = channel_id in CHAT_CHANNEL_IDS
+        room_channel = channel_id in ROOM_REQUEST_CHANNEL_IDS
+        allow_chat = addressed or configured_chat
+        allow_room = addressed or room_channel or configured_chat
+        room_candidate = is_room_request_candidate(prompt)
+
+        if not allow_chat and not (allow_room and room_candidate):
             return
-        if self.user:
-            prompt = prompt.replace(self.user.mention, "").strip()
+        if self.user is not None:
+            prompt = prompt.replace(self.user.mention, "")
             prompt = prompt.replace(f"<@!{self.user.id}>", "").strip()
+        if not prompt:
+            prompt = "Respond to the message being replied to." if reply_context else ""
         if prompt:
-            await self.handle_prompt(message, prompt)
+            await self.handle_prompt(
+                message,
+                prompt,
+                allow_chat=allow_chat,
+                allow_room=allow_room,
+                reply_context=reply_context,
+            )
 
 
 bot = BuddyBot()
@@ -226,13 +361,16 @@ async def ask_command(interaction: discord.Interaction, question: str):
     try:
         await interaction.response.defer()
         reply = await bot.ask_gemini(question)
+        await interaction.followup.send(
+            reply,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
     except Exception as exc:
         print("Slash ask error:", repr(exc))
-        reply = "Brain.exe crashed 💀"
-    if interaction.response.is_done():
-        await interaction.followup.send(reply)
-    else:
-        await interaction.response.send_message(reply)
+        if interaction.response.is_done():
+            await interaction.followup.send(GEMINI_FAILURE_REPLY)
+        else:
+            await interaction.response.send_message(GEMINI_FAILURE_REPLY)
 
 
 @bot.tree.command(name="room", description="Create a Smash Karts room")
@@ -241,18 +379,23 @@ async def room_command(interaction: discord.Interaction, request: str):
         await interaction.response.defer()
         reply = await bot.create_room_reply(request)
         reply = reply or "Abe room ka request toh de, mind-reader nahi hoon 💀"
+        await interaction.followup.send(
+            reply,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
     except Exception as exc:
         print("Slash room error:", repr(exc))
-        reply = "Room nahi bana, game ne bhi mujhe reject kar diya 💀"
-    if interaction.response.is_done():
-        await interaction.followup.send(reply)
-    else:
-        await interaction.response.send_message(reply)
+        if interaction.response.is_done():
+            await interaction.followup.send(ROOM_FAILURE_REPLY)
+        else:
+            await interaction.response.send_message(ROOM_FAILURE_REPLY)
 
 
 def main():
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN is not configured.")
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not configured.")
     bot.run(DISCORD_TOKEN)
 
 
