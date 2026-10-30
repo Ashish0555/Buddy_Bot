@@ -252,13 +252,15 @@ def enable_default_plus(
 # ARENA / MAP IDs VERIFIED FROM TESTED LINKS
 # ------------------------------------------------------------------
 
+# All known arena IDs (FFA + CTF). Only maps with game-tested evidence
+# are included here. If a map is missing, it MUST NOT be silently invented.
 ARENA_IDS = {
-    # Standard Arena Maps
+    # Standard Arena Maps (FFA)
     "smash island": "smashisland",
     "gravel pit": "gravelpit",
     "steky's speedway": "stekysspeedway",
-"stekys speedway": "stekysspeedway",
-"stekysspeedway": "stekysspeedway",
+    "stekys speedway": "stekysspeedway",
+    "stekysspeedway": "stekysspeedway",
     "smash fort": "smashfort",
     "slick 'n slide": "slicknslide",
     "slick n slide": "slicknslide",
@@ -283,7 +285,7 @@ ARENA_IDS = {
     "temples": "skyarena-temples",
     "tunnels": "skyarena-tunnels",
 
-    # CTF Maps
+    # CTF Maps (VERIFIED - game-tested)
     "smash fort ctf": "smashfort",
     "smash island ctf": "smashisland",
     "graveyard ctf": "graveyard",
@@ -291,19 +293,69 @@ ARENA_IDS = {
     "sky arena temples ctf": "skyarena-temples",
     "sky arena tunnels ctf": "skyarena-tunnels",
 
-    # Space
+    # CTF Allowlist Maps (placeholders - need game-tested verification)
+    "battle box": "battlebox",
+    "skate city": "skatecity",
+    "toxic tower": "toxictower",
     "space station": "spacestations",
+    "sky arena showdown": "skyarena-showdown",
+    "snowpark ctf": "snowparkctf",
+
+    # Space
     "space stations": "spacestations",
 
     # Existing/known aliases
-    "sky arena showdown": "skyarena-showdown",
     "sky arena dropzone": "skyarena-dropzone",
     "sky arena pinball": "skyarena-pinball",
     "sky arena temples": "skyarena-temples",
     "sky arena tunnels": "skyarena-tunnels",
     "snowshrine": "snowshrine",
     "snow shrine": "snowshrine",
-    "skate city": "skatecity",
+}
+
+# Maps that are explicitly SUPPORTED for CTF mode with verified arena IDs.
+# Only these maps can be used for CTF rooms.
+# Key: normalized map name (lowercase, as used in ARENA_IDS)
+# Value: arena ID
+CTF_VERIFIED_MAPS = {
+    "smash fort ctf": "smashfort",
+    "smash island ctf": "smashisland",
+    "graveyard ctf": "graveyard",
+    "lava pit ctf": "lavapitctf",
+    "sky arena temples ctf": "skyarena-temples",
+    "sky arena tunnels ctf": "skyarena-tunnels",
+}
+
+# Set of verified CTF arena IDs for fast lookup.
+# Multiple map names can map to the same arena ID.
+CTF_VERIFIED_ARENA_IDS = set(CTF_VERIFIED_MAPS.values())
+
+# Complete CTF allowlist per user specification (12 maps).
+# Maps without verified IDs are listed but will be rejected until verified.
+CTF_ALLOWLIST = {
+    "battle box",
+    "skate city",
+    "toxic tower",
+    "toxic towers",
+    "space station",
+    "space stations",
+    "sky arena showdown",
+    "smash island",
+    "snowpark ctf",
+    "lava pit ctf",
+    "graveyard ctf",
+    "smash fort ctf",
+}
+
+# Maps that are NOT CTF-compatible (for FFA random selection).
+# Excludes CTF-verified maps and maps that don't support FFA well.
+FFA_EXCLUDED_MAPS = {
+    "smash fort ctf",
+    "smash island ctf",
+    "graveyard ctf",
+    "lava pit ctf",
+    "sky arena temples ctf",
+    "sky arena tunnels ctf",
 }
 
 MAP_SHORTFORMS = {
@@ -352,6 +404,37 @@ def normalize_arena(arena: str) -> str:
         return key
 
     raise ValueError(f"Unknown/untested arena: {arena}")
+
+
+def is_ctf_verified(arena: str) -> bool:
+    """Check if a map has a verified CTF arena ID mapping."""
+    try:
+        arena_id = normalize_arena(arena)
+        return arena_id in CTF_VERIFIED_ARENA_IDS
+    except ValueError:
+        return False
+
+
+def is_ctf_allowlisted(arena: str) -> bool:
+    """Check if a map is in the CTF allowlist (may or may not be verified)."""
+    key = " ".join(arena.strip().lower().replace("_", " ").split())
+    key = MAP_SHORTFORMS.get(key, key)
+    return key in CTF_ALLOWLIST
+
+
+def get_ctf_verified_arenas() -> list[str]:
+    """Return list of arena IDs for verified CTF maps (for random selection)."""
+    return list(CTF_VERIFIED_MAPS.values())
+
+
+def get_ffa_arenas() -> list[str]:
+    """Return list of arena IDs for FFA maps (excludes CTF-only variants)."""
+    excluded = set(FFA_EXCLUDED_MAPS)
+    arenas = []
+    for name, arena_id in ARENA_IDS.items():
+        if name not in excluded:
+            arenas.append(arena_id)
+    return arenas
 
 
 # ------------------------------------------------------------------
@@ -435,6 +518,10 @@ __all__ = [
     "WEAPON_BITS",
     "ARENA_IDS",
     "MAP_SHORTFORMS",
+    "CTF_VERIFIED_MAPS",
+    "CTF_VERIFIED_ARENA_IDS",
+    "CTF_ALLOWLIST",
+    "FFA_EXCLUDED_MAPS",
     "RoomConfig",
     "generate_india_room_id",
     "encode_ffa_mode",
@@ -444,6 +531,10 @@ __all__ = [
     "disable_weapons",
     "enable_default_plus",
     "normalize_arena",
+    "is_ctf_verified",
+    "is_ctf_allowlisted",
+    "get_ctf_verified_arenas",
+    "get_ffa_arenas",
     "build_room_url",
     "create_room_url",
     "create_ffa_room_url",

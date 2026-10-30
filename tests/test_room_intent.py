@@ -36,7 +36,7 @@ def test_bina_team_disables_ffa_teams():
 
 
 def test_eight_players_defaults_to_ctf():
-    room = resolve("dz", players=8)
+    room = resolve("sfc", players=8)
     assert room["game_mode"] == "ctf"
     assert room["max_players"] == 8
 

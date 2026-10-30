@@ -10,23 +10,41 @@ from pydantic import BaseModel, ConfigDict, Field
 try:
     from .room_creator import (
         ARENA_IDS,
+        CTF_ALLOWLIST,
+        CTF_VERIFIED_MAPS,
+        CTF_VERIFIED_ARENA_IDS,
         DEFAULT_WEAPONS,
+        FFA_EXCLUDED_MAPS,
+        MAP_SHORTFORMS,
         VALID_MAX_PLAYERS,
         VALID_SCORE_TARGETS,
         VALID_TIMERS,
         WEAPON_BITS,
         create_room_url,
+        get_ctf_verified_arenas,
+        get_ffa_arenas,
+        is_ctf_allowlisted,
+        is_ctf_verified,
         normalize_arena,
     )
 except ImportError:
     from room_creator import (
         ARENA_IDS,
+        CTF_ALLOWLIST,
+        CTF_VERIFIED_MAPS,
+        CTF_VERIFIED_ARENA_IDS,
         DEFAULT_WEAPONS,
+        FFA_EXCLUDED_MAPS,
+        MAP_SHORTFORMS,
         VALID_MAX_PLAYERS,
         VALID_SCORE_TARGETS,
         VALID_TIMERS,
         WEAPON_BITS,
         create_room_url,
+        get_ctf_verified_arenas,
+        get_ffa_arenas,
+        is_ctf_allowlisted,
+        is_ctf_verified,
         normalize_arena,
     )
 
@@ -51,18 +69,12 @@ class RoomIntentError(ValueError):
 
 
 DEFAULT_DISABLED_WEAPONS = ("machine_gun", "invincibility", "lob_sentry")
-RANDOM_MAPS = tuple(
-    arena
-    for arena in ARENA_IDS
-    if arena not in {
-        "smash fort ctf",
-        "smash island ctf",
-        "graveyard ctf",
-        "lava pit ctf",
-        "sky arena temples ctf",
-        "sky arena tunnels ctf",
-    }
-)
+
+
+def _normalize_map_name(name: str) -> str:
+    """Normalize a map name for consistent comparison."""
+    key = " ".join(name.strip().lower().replace("_", " ").split())
+    return MAP_SHORTFORMS.get(key, key)
 
 
 def _default_weapons(enabled_weapons: list[str]) -> int:
@@ -78,6 +90,12 @@ def _default_weapons(enabled_weapons: list[str]) -> int:
     return mask
 
 
+def _get_arena_id(map_name: str) -> str:
+    """Get the arena ID for a map name, normalizing first."""
+    normalized = _normalize_map_name(map_name)
+    return normalize_arena(normalized)
+
+
 def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
     """Apply deterministic defaults and return arguments for create_room_url."""
     if not intent.is_room_request:
@@ -89,9 +107,59 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
             f"Player count must be one of: {sorted(VALID_MAX_PLAYERS)}."
         )
 
+    # Determine mode with CTF map compatibility validation
     mode = intent.mode
+    map_provided = intent.map is not None
+
+    # Check CTF compatibility via arena ID (not just map name)
+    # because multiple map names can share the same arena ID
+    arena_id = None
+    map_is_ctf_verified = False
+    map_is_ctf_allowlisted = False
+
+    if map_provided:
+        assert intent.map is not None
+        map_name = intent.map
+        try:
+            arena_id = _get_arena_id(map_name)
+            map_is_ctf_verified = arena_id in CTF_VERIFIED_ARENA_IDS
+            map_is_ctf_allowlisted = is_ctf_allowlisted(map_name)
+        except ValueError as exc:
+            raise RoomIntentError(str(exc)) from exc
+
     if mode is None:
-        mode = "ffa" if players <= 4 else "ctf"
+        # Mode unspecified - apply defaults with map compatibility
+        if map_provided:
+            if map_is_ctf_verified:
+                # CTF-compatible map: normal default rules apply
+                mode = "ffa" if players <= 4 else "ctf"
+            elif map_is_ctf_allowlisted:
+                # Map is in CTF allowlist but not verified - default to FFA
+                mode = "ffa"
+            else:
+                # Non-CTF map: force FFA regardless of player count
+                mode = "ffa"
+        else:
+            # No map specified: normal default rules apply
+            mode = "ffa" if players <= 4 else "ctf"
+    else:
+        # Mode explicitly specified
+        if mode == "ctf" and map_provided:
+            if map_is_ctf_verified:
+                # Valid CTF map (arena ID is verified)
+                pass
+            elif map_is_ctf_allowlisted:
+                # In allowlist but not verified
+                raise RoomIntentError(
+                    f"CTF on '{intent.map}' is not yet verified. "
+                    "Game-tested evidence required before enabling."
+                )
+            else:
+                # Not a CTF map at all
+                raise RoomIntentError(
+                    f"'{intent.map}' does not support CTF mode. "
+                    "Use FFA or pick a CTF-compatible map."
+                )
 
     if intent.round_format is None:
         round_format = "timer"
@@ -113,6 +181,7 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
             f"{label} must be one of: {sorted(valid_values)}."
         )
 
+    # Determine arena with mode-aware random selection
     if intent.map:
         try:
             normalize_arena(intent.map)
@@ -121,7 +190,12 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
         arena = intent.map
     else:
         chooser = random_choice or random.choice
-        arena = chooser(RANDOM_MAPS)
+        if mode == "ctf":
+            # Random CTF map - only from verified CTF maps
+            arena = chooser(get_ctf_verified_arenas())
+        else:
+            # Random FFA map - from FFA-compatible maps
+            arena = chooser(get_ffa_arenas())
 
     teams = True if intent.teams is None else intent.teams
     return {

@@ -40,18 +40,17 @@ CHAT_CHANNEL_IDS = _channel_ids("CHAT_CHANNEL_IDS")
 ROOM_REQUEST_CHANNEL_IDS = _channel_ids("ROOM_REQUEST_CHANNEL_IDS")
 
 SYSTEM_INSTRUCTION = f"""
-You are Buddy, a bakchod Indian gaming friend in a Discord server, who speaks English ,Hinglish,hindi, tamil , talugu.
-always reply in user/query language.
-Sound like a real friend: funny, sarcastic, mischievous, informal, and
-comfortable with English, Hindi, and natural Hinglish. Match the user's tone.
-Use playful roasting and occasional friendly words like bc, bkl, saale, or
-chutiye only when they fit; never force profanity, hateful slurs, threats, or
-genuinely hostile harassment. Keep casual replies short and spontaneous, but
-usually use 5–20 words and never exceed {CHAT_MAX_WORDS} words for ordinary
-conversation. Prefer one natural sentence, not multiple paragraphs. Skip
-unnecessary explanations, greetings, and follow-up questions. For serious
-questions or explicit requests for detail, give an accurate, useful answer
-even if it needs to be longer than the ordinary chat limit.
+You are Buddy, a fun, sarcastic gaming friend in a Discord server.
+You speak English, Hinglish, Hindi, Tamil, Telugu - always match the user's language.
+Sound like a real friend: funny, witty, casual, comfortable with banter.
+Use light teasing and playful roasting ONLY when the user initiates that vibe
+or explicitly asks for a roast. Never force profanity, hateful slurs, threats,
+or genuinely hostile harassment. Don't start every response with "abe", "bc",
+"bkl", "saale", or "chutiye" - save those for actual banter moments.
+Keep casual replies short and spontaneous, usually 5–20 words, never exceed {CHAT_MAX_WORDS} words for ordinary conversation. Prefer one natural sentence,
+not multiple paragraphs. Skip unnecessary explanations, greetings, and
+follow-up questions. For serious questions or explicit requests for detail,
+give an accurate, useful answer even if it needs to be longer.
 Do not sound like customer support, use canned greetings, or mention being an
 AI unless asked. Do not generate room URLs; room creation is handled by Python.
 """
@@ -67,17 +66,60 @@ score targets, team on/off, and explicitly enabled weapon names.
 Never invent defaults, URLs, maps, settings, or weapons.
 """
 
-ROOM_RESPONSES = (
-    "Le bkl {map_name} khel tu 😂",
-    "Le bc room bana diya, ab haarne mat lag jaana 💀",
-    "Abe noob, ye le tera {map_name} room.",
-    "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
-    "Le bhai, room bana diya. Ab rona mat haar ke.",
-    "Saale har baar mujhe hi room banana padta hai 🤧",
+# Friendly, varied room response templates - mostly helpful, some playful for banter
+ROOM_RESPONSES_ENGLISH = (
+    "Here's your {map_name} room!",
+    "Room ready — have fun!",
+    "Your {map_name} room is set up.",
+    "All set! {map_name} room link below.",
+    "Room created. Enjoy the game!",
+    "Done! Here's your {map_name} room.",
 )
 
-ROOM_FAILURE_REPLY = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
-GEMINI_FAILURE_REPLY = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
+ROOM_RESPONSES_HINDI = (
+    "ये रहा तुम्हारा {map_name} रूम!",
+    "रूम तैयार है, मजे करो!",
+    "तुम्हारा {map_name} रूम सेट हो गया।",
+    "लो, {map_name} रूम का लिंक।",
+    "रूम बन गया। गेम एन्जॉय करो!",
+    "हो गया! ये रहा {map_name} रूम।",
+)
+
+ROOM_RESPONSES_HINGLISH = (
+    "Le bhai, {map_name} room ready hai!",
+    "Room bana diya, enjoy karo!",
+    "Tera {map_name} room set ho gaya.",
+    "Ye raha {map_name} room ka link.",
+    "Room ready hai. Game enjoy kar!",
+    "Ho gaya! Ye raha tera {map_name} room.",
+)
+
+# Playful/banter responses - only used when user engages in banter first
+ROOM_RESPONSES_PLAYFUL_ENGLISH = (
+    "Here's your {map_name} room, try not to suck 😂",
+    "Room ready. Don't come crying when you lose!",
+    "Got your room. Try to get at least one kill 💀",
+)
+
+ROOM_RESPONSES_PLAYFUL_HINDI = (
+    "Le {map_name} ka room, ab haar mat jaana 😂",
+    "Room ready hai, ab rona mat haar ke!",
+    "Room bana diya, kuch kills toh kar lena 💀",
+)
+
+ROOM_RESPONSES_PLAYFUL_HINGLISH = (
+    "Le bkl {map_name} khel tu 😂",
+    "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
+    "Le bc room bana diya, ab haar ke rona mat 💀",
+)
+
+GEMINI_FAILURE_REPLY_ENGLISH = "Buddy's brain froze, try again in a bit 💀"
+GEMINI_FAILURE_REPLY_HINDI = "बडी का दिमाग हैंग हो गया, थोड़ी देर बाद ट्राई कर 💀"
+GEMINI_FAILURE_REPLY_HINGLISH = "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
+
+# Backwards compatibility
+GEMINI_FAILURE_REPLY = GEMINI_FAILURE_REPLY_ENGLISH
+
 DISCORD_MESSAGE_LIMIT = 2000
 
 
@@ -129,167 +171,150 @@ def detect_language(text: str) -> Language:
     hinglish_words = {
         "hai", "hoon", "hain", "tha", "thi", "the", "kar", "karna", "karo", "kare",
         "bnao", "bnado", "bnade", "bna", "de", "do", "chahiye", "chahie",
-        "kya", "kaise", "kaisa", "kaisi", "kya", "kahan", "kab", "kyun",
-        "acha", "accha", "theek", "thik", "mast", "badhiya", "badhiya",
-        "bc", "bkl", "bkl", "saale", "chutiya", "chutiye", "madarchod",
-        "bhenchod", "gaand", "lodu", "chutiya", "bakchod", "bakchodi",
-        "room", "match", "game", "play", "khel", "khelna", "khelo",
-        "map", "sf", "si", "gp", "dz", "lp", "ffa", "ctf",
-        "player", "players", "banda", "bande", "logo", "logon",
-        "timer", "minute", "score", "team", "teams", "weapon",
-        "bhai", "bhaiya", "yaar", "dost", "mitr", "behen", "behenchod",
+        "kya", "kaise", "kaisa", "kaisi", "kahan", "kab", "kyun",
+        "acha", "accha", "theek", "thik", "mast", "badhiya",
+        "bhai", "bhaiya", "yaar", "dost", "mitr", "behen",
         "ab", "to", "toh", "le", "ye", "yeh", "wo", "woh", "wohi",
         "aur", "or", "par", "lekin", "magar", "kyunki", "kiunki",
-        "nahi", "nhi", "na", "haan", "han", "ji", "ha", "ok", "okay",
+        "nahi", "nhi", "na", "haan", "han", "ji", "ha",
         "chal", "chalo", "chale", "chalta", "chalti", "chalte",
         "dekh", "dekho", "dekha", "sun", "suno", "suna", "bol", "bolo",
-        "kya", "kaun", "kaisa", "kitna", "kitne", "kahan", "kab",
+        "kaun", "kaisa", "kitna", "kitne",
         "mera", "meri", "mere", "tera", "teri", "tere", "uska", "uski",
         "hamara", "hamari", "hamare", "tumhara", "tumhari", "tumhare",
         "kuch", "kuchh", "thoda", "thodi", "thode", "bahut", "bohot",
         "zaroor", "jarur", "zaroori", "jaruri", "chahta", "chahti", "chahte",
         "chahiye", "chahie", "padta", "padti", "padte", "hota", "hoti", "hote",
+        # Gaming/room related words commonly used in Hinglish
+        "room", "match", "game", "play", "khel", "khelna", "khelo",
+        "map", "sf", "si", "gp", "dz", "lp", "ffa", "ctf",
+        "player", "players", "banda", "bande", "logo", "logon",
+        "timer", "minute", "score", "team", "teams", "weapon",
+        "please", "pls", "plz",
+        # Common Hinglish grammar words
+        "ka", "ke", "ki", "ko", "me", "se", "pe", "par", "liye",
+        # Slang/bakchod words for Hinglish detection
+        "bakchod", "bakchodi",
+        # Common shortforms/slang
+        "bkl", "bk", "bna", "bn", "bnao", "bnae", "bnaega", "bnaegi",
     }
 
-    words = set(re.findall(r"[a-zA-Z]+", text.lower()))
-    hinglish_count = sum(1 for w in words if w in hinglish_words)
-    english_words = {"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-                     "have", "has", "had", "do", "does", "did", "will", "would", "could",
-                     "should", "may", "might", "must", "can", "shall", "i", "you", "he",
-                     "she", "it", "we", "they", "me", "him", "her", "us", "them", "my",
-                     "your", "his", "her", "its", "our", "their", "this", "that", "these",
-                     "those", "and", "or", "but", "if", "then", "else", "when", "where",
-                     "why", "how", "what", "who", "which", "there", "here", "not", "no",
-                     "yes", "so", "very", "much", "many", "more", "most", "less", "least",
-                     "just", "only", "also", "even", "still", "yet", "already", "never",
-                     "always", "sometimes", "often", "usually", "rarely", "seldom"}
-    english_count = sum(1 for w in words if w in english_words)
+    # English words that should NOT count as Hinglish even if in hinglish_words
+    # (e.g., "ok", "okay" are common in English too)
+    hinglish_exclude = {"ok", "okay"}
 
-    # If significant Hinglish vocabulary present
+    # Gaming terms that are common in both English and Hinglish
+    # Should not count as Hinglish indicators on their own
+    gaming_terms = {"room", "match", "game", "play", "map", "sf", "si", "gp", "dz", "lp",
+                    "ffa", "ctf", "player", "players", "timer", "minute", "score",
+                    "team", "teams", "weapon", "random"}
+
+    words = set(re.findall(r"[a-zA-Z]+", text.lower()))
+    hinglish_count = sum(1 for w in words if w in hinglish_words and w not in hinglish_exclude and w not in gaming_terms)
+
+    # Common English stop words that shouldn't count as "English content"
+    english_stopwords = {"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+                         "have", "has", "had", "do", "does", "did", "will", "would", "could",
+                         "should", "may", "might", "must", "can", "shall", "i", "you", "he",
+                         "she", "it", "we", "they", "me", "him", "her", "us", "them", "my",
+                         "your", "his", "her", "its", "our", "their", "this", "that", "these",
+                         "those", "and", "or", "but", "if", "then", "else", "when", "where",
+                         "why", "how", "what", "who", "which", "there", "here", "not", "no",
+                         "yes", "so", "very", "much", "many", "more", "most", "less", "least",
+                         "just", "only", "also", "even", "still", "yet", "already", "never",
+                         "always", "sometimes", "often", "usually", "rarely", "seldom"}
+
+    # Count meaningful English words (non-stopwords, not in hinglish_words)
+    english_content_words = [w for w in words if w not in english_stopwords and w not in hinglish_words and len(w) > 2]
+    english_count = len(english_content_words)
+
+    # If significant Hinglish vocabulary present (at least 2 words, more than English content)
     if hinglish_count >= 2 and hinglish_count >= english_count:
         return Language.HINGLISH
 
-    # If mostly English words
+    # If mostly English content words
     if english_count > hinglish_count and latin / total_alpha > 0.3:
         return Language.ENGLISH
 
-    # Default to Hinglish for ambiguous short messages with Latin script
-    if latin > 0:
-        return Language.HINGLISH
+    # For short messages with only common English words (hi, hey, hello, thanks, ok, etc.)
+    # and no Hinglish markers, default to English
+    if hinglish_count == 0 and english_count > 0:
+        return Language.ENGLISH
+
+    # Check if it's a simple greeting or common English phrase
+    simple_english = {"hi", "hey", "hello", "thanks", "thank", "ok", "okay", "yes", "no", "yo", "sup", "hru", "gm", "gn", "bye", "good", "morning", "night", "how", "are", "you", "doing", "what", "up"}
+    if words.issubset(simple_english | english_stopwords) and hinglish_count == 0:
+        return Language.ENGLISH
+
+    # Default to English for ambiguous short messages with Latin script
+    # (only if no Hinglish markers found)
+    if latin > 0 and hinglish_count == 0:
+        return Language.ENGLISH
 
     return Language.OTHER
 
 
 def get_system_instruction(language: Language) -> str:
     """Generate system instruction tailored to the detected language."""
-    base = f"""You are Buddy, a funny, sarcastic, informal gaming friend in a Discord server.
-Sound like a real friend: mischievous, comfortable with banter.
-Use playful roasting and occasional friendly words only when they fit naturally.
-Never force profanity, hateful slurs, threats, or genuinely hostile harassment.
-Keep casual replies short and spontaneous, usually 5–20 words, never exceed {CHAT_MAX_WORDS} words for ordinary conversation.
-Prefer one natural sentence, not multiple paragraphs. Skip unnecessary explanations, greetings, and follow-up questions.
-For serious questions or explicit requests for detail, give an accurate, useful answer even if longer.
-Do not sound like customer support, use canned greetings, or mention being an AI unless asked.
-Do not generate room URLs; room creation is handled by Python."""
+    base = f"""You are Buddy, a fun, sarcastic, witty gaming friend in a Discord server.
+Sound like a real friend: casual, comfortable with banter.
+Use light teasing and playful roasting ONLY when the user initiates that vibe
+or explicitly asks for a roast. Never force profanity, hateful slurs, threats,
+or genuinely hostile harassment. Don't automatically start with "abe", "bc",
+"bkl", "saale", or "chutiye" - save those for actual banter moments.
+Keep casual replies short and spontaneous, usually 5–20 words, never exceed {CHAT_MAX_WORDS} words for ordinary conversation. Prefer one natural sentence,
+not multiple paragraphs. Skip unnecessary explanations, greetings, and
+follow-up questions. For serious questions or explicit requests for detail,
+give an accurate, useful answer even if longer.
+Do not sound like customer support, use canned greetings, or mention being an
+AI unless asked. Do not generate room URLs; room creation is handled by Python."""
 
     if language == Language.ENGLISH:
         return base + """
 Respond in natural English. Use English sarcasm, slang, and gaming banter.
-Sound like a witty English-speaking gaming buddy. Don't use Hindi words or Hinglish."""
+Sound like a witty English-speaking gaming buddy. Don't use Hindi words or Hinglish.
+Only roast if the user starts it or asks for a roast."""
     elif language == Language.HINDI:
         return base + """
 Respond in Hindi (Devanagari script). Use natural Hindi slang, gaming banter, and sarcasm.
-Sound like a Hindi-speaking gaming buddy. Don't use English or Roman Hindi."""
+Sound like a Hindi-speaking gaming buddy. Don't use English or Roman Hindi.
+Only roast if the user starts it or asks for a roast."""
     elif language == Language.HINGLISH:
         return base + """
 Respond in natural Hinglish (Roman Hindi/Urdu mixed with English).
-Sound like a bakchod Indian gaming friend: funny, sarcastic, mischievous, informal.
-Use playful roasting with words like bc, bkl, saale, chutiye only when they fit naturally.
-Mix English and Hindi naturally like a real Indian gamer would. Don't force it."""
+Sound like a fun Indian gaming friend: witty, casual, mischievous, bakchod.
+Use playful roasting with words like bc, bkl, saale, chutiye ONLY when the user
+starts that banter or explicitly asks for a roast. Mix English and Hindi naturally.
+Don't force it or overdo the roasting."""
     else:
         return base + """
 Respond in the user's language. Match their tone and writing style naturally."""
 
 
-def get_room_responses(language: Language) -> tuple[str, ...]:
+def get_room_responses(language: Language, playful: bool = False) -> tuple[str, ...]:
     """Get room creation response templates for the given language."""
     if language == Language.ENGLISH:
-        return (
-            "Here's your {map_name} room, noob 😂",
-            "Room created. Try not to suck this time 💀",
-            "Here's your {map_name} room, enjoy getting wrecked.",
-            "Room ready. Don't come crying when you lose 😂",
-            "Got your room ready. Try to get some kills at least.",
-            "Why do I always have to make rooms for you? 🤧",
-        )
+        if playful:
+            return ROOM_RESPONSES_PLAYFUL_ENGLISH
+        return ROOM_RESPONSES_ENGLISH
     elif language == Language.HINDI:
-        return (
-            "ले बे {map_name} का रूम, खेल ले 😂",
-            "रूम बना दिया, अब हार मत जाना 💀",
-            "अबे नूब, ये ले तेरा {map_name} रूम।",
-            "रूम रेडी है, अब कुछ किल्स भी कर ले 😂",
-            "ले भाई, रूम बना दिया। अब रोना मत हार के।",
-            "साले हर बार मुझे ही रूम बनाना पड़ता है 🤧",
-        )
+        if playful:
+            return ROOM_RESPONSES_PLAYFUL_HINDI
+        return ROOM_RESPONSES_HINDI
     else:  # HINGLISH or OTHER
-        return (
-            "Le bkl {map_name} khel tu 😂",
-            "Le bc room bana diya, ab haarne mat lag jaana 💀",
-            "Abe noob, ye le tera {map_name} room.",
-            "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
-            "Le bhai, room bana diya. Ab rona mat haar ke.",
-            "Saale har baar mujhe hi room banana padta hai 🤧",
-             "Le bkl, {map_name} ready hai, ab khel bhi le 😂",
-            "Abe bc room bana diya, ab haar ke rona mat ",
-            "Le saale, {map_name} pe apni aukaat dikha.",
-            "Room ready hai chutiye, ab kills bhi kar lena 😂",
-            "Abe noob, ye le tera room, ab nikal game mein.",
-           "Le bhai {map_name}, ab pro banke dikha 💀",
-            "Bkl room bana diya, ab mujhe tang mat kar.",
-            "Abe lodu, {map_name} pe aaj tera test hai 😂",
-          "Le bc, room ready hai, ab respawn simulator mat khelna.",
-            "Saale room bhi main banau, kills bhi main karu kya?",
-             "Ye le tera {map_name}, ab hagna mat game mein ",
-           "Abe champion, room ready hai, aim bhi le aana.",
-           "Le bkl, {map_name} pe aaj teri pitai hogi 😂",
-            "Room bana diya bc, ab internet ko blame mat karna.",
-          "Le saale, room ready, ab jaldi join kar.",
-          "Abe noobde, {map_name} pe thoda dhang se khelna.",
-             "Le bhai, room mil gaya, ab skill kahan se layega? ",
-           "Bkl tera {map_name} ready hai, ab jaldi ghus.",
-            "Abe bc, room khol diya, ab faltu bakchodi band.",
-           "Le chutiye, room ready, ab team ko mat dubana 😂",
-          "Saale {map_name} bana diya, ab MVP banke dikha.",
-           "Le bc, ab enemy ko maarna, khud ko nahi ",
-              "Abe room ready hai, ab bas lobby mein mat baitha reh.",
-             "Le bkl, {map_name} pe tera career khatre mein hai 😂",
-           "Room de diya saale, ab gameplay se sharminda mat karna.",
-          "Abe bc, aaj toh {map_name} pe tabahi macha de.",
-           "Le noob, room bana diya, ab killfeed mein bhi dikhna.",
-            "Bkl room ready hai, ab mouse ko dosh mat dena ",
-             "Abe saale, {map_name} pe aaj teri training hogi.",
-           "Le bhai, room ban gaya, ab jeet ke aana 😂",
-           "Chal bc {map_name} ready hai, ab lobby bhar.",
-          "Abe bkl, room toh mil gaya, skill kab aayegi?",
-                "Le saale, {map_name} pe ja aur thodi izzat kama.",
-            "Room ready bc, ab harne ke naye bahane mat banana.",
-            "Abe noob, tera {map_name} setup ho gaya ",
-            "Le bkl, ab game mein bhi itna hi bolna 😂",
-            "Saale room bana diya, ab opponent ko bhi kuch karne dena.",
-            "Abe bc, {map_name} khul gaya, ab hero ban ja.",
-            "Le chutiye, room ready, ab scoreboard mein zero mat lana.",
-            "Bkl ye le tera room, ab chupchap khel 😂",
-        )
+        if playful:
+            return ROOM_RESPONSES_PLAYFUL_HINGLISH
+        return ROOM_RESPONSES_HINGLISH
 
 
 def get_failure_reply(language: Language) -> str:
     """Get failure reply for the given language."""
     if language == Language.ENGLISH:
-        return "Buddy's brain froze, try again in a bit 💀"
+        return GEMINI_FAILURE_REPLY_ENGLISH
     elif language == Language.HINDI:
-        return "बडी का दिमाग हैंग हो गया, थोड़ी देर बाद ट्राई कर 💀"
+        return GEMINI_FAILURE_REPLY_HINDI
     else:  # HINGLISH or OTHER
-        return "Abe bc Gemini ka dimaag hang ho gaya, thodi der baad try kar 💀"
+        return GEMINI_FAILURE_REPLY_HINGLISH
 
 
 def extract_response_text(response) -> str | None:
@@ -444,10 +469,26 @@ class BuddyBot(commands.Bot):
         try:
             url = create_room_from_intent(intent)
             map_name = intent.map or "random map"
-            sentence = random.choice(get_room_responses(language)).format(map_name=map_name)
+            # Check if user is engaging in playful banter (contains roast triggers)
+            is_playful = self._is_playful_context(prompt, language)
+            sentence = random.choice(get_room_responses(language, playful=is_playful)).format(map_name=map_name)
             return f"{sentence}\n{url}"
         except RoomIntentError as exc:
             return str(exc)
+
+    def _is_playful_context(self, prompt: str, language: Language) -> bool:
+        """Detect if user is engaging in playful banter/roasting."""
+        lower = prompt.lower()
+        # Explicit roast requests
+        if re.search(r"\b(?:roast|insult|abuse)\s+me\b", lower):
+            return True
+        # User using heavy slang/roasting first
+        if language == Language.HINGLISH:
+            roast_words = {"bc", "bkl", "saale", "chutiye", "madarchod", "bhenchod", "lodu", "bakchod"}
+            words = set(re.findall(r"[a-zA-Z]+", lower))
+            if words & roast_words:
+                return True
+        return False
 
     async def _ask_gemini_async(
         self,
@@ -470,8 +511,11 @@ class BuddyBot(commands.Bot):
         )
         return extract_response_text(response) or get_failure_reply(language)
 
-    async def ask_gemini(self, prompt: str, reply_context: str | None = None, language: Language = Language.HINGLISH) -> str:
+    async def ask_gemini(self, prompt: str, reply_context: str | None = None, language: Language | None = None) -> str:
         # Kept as a test seam for existing mocked tests; production uses the async SDK.
+        # Auto-detect language if not provided
+        if language is None:
+            language = detect_language(prompt)
         test_operation = self.__dict__.get("_ask_gemini_sync")
         operation = test_operation or self._ask_gemini_async
         try:
@@ -608,7 +652,13 @@ async def room_command(interaction: discord.Interaction, request: str):
         await interaction.response.defer()
         language = detect_language(request)
         reply = await bot.create_room_reply(request)
-        reply = reply or ("Abe room ka request toh de, mind-reader nahi hoon 💀" if language != Language.ENGLISH else "Give me a room request, I'm not a mind reader 💀")
+        if reply is None:
+            if language == Language.ENGLISH:
+                reply = "Give me a room request, I'm not a mind reader 💀"
+            elif language == Language.HINDI:
+                reply = "रूम का रिक्वेस्ट तो दे, माइंड रीडर नहीं हूँ 💀"
+            else:
+                reply = "Abe room ka request toh de, mind-reader nahi hoon 💀"
         await interaction.followup.send(
             reply,
             allowed_mentions=discord.AllowedMentions.none(),
