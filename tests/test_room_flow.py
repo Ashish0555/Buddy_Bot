@@ -14,7 +14,7 @@ def test_unrelated_message_is_left_for_regular_gemini(monkeypatch):
     monkeypatch.setattr(
         buddy,
         "extract_room_intent",
-        lambda prompt: RoomIntent(is_room_request=False),
+        lambda model, prompt: RoomIntent(is_room_request=False),
     )
     assert asyncio.run(buddy.create_room_reply("kya haal hai")) is None
 
@@ -24,7 +24,7 @@ def test_successful_room_sends_one_sentence_then_one_url(monkeypatch):
     monkeypatch.setattr(
         buddy,
         "extract_room_intent",
-        lambda prompt: RoomIntent(is_room_request=True, map="sf"),
+        lambda model, prompt: RoomIntent(is_room_request=True, map="sf"),
     )
     monkeypatch.setattr(
         bot,
@@ -85,14 +85,14 @@ def test_chat_response_uses_gemini_and_reply_context():
     buddy = bot.BuddyBot(gemini_client=object())
     calls = []
 
-    def fake_sync(prompt, reply_context=None, language=None):
-        calls.append((prompt, reply_context, language))
+    def fake_sync(model, prompt, reply_context=None, language=None):
+        calls.append((model, prompt, reply_context, language))
         return "Abe bkl, decorator samajh pehle 😂"
 
     buddy._ask_gemini_sync = fake_sync
     reply = asyncio.run(buddy.ask_gemini("decorator kya hota hai?", "previous answer"))
     assert reply.startswith("Abe bkl")
-    assert calls == [("decorator kya hota hai?", "previous answer", bot.Language.HINGLISH)]
+    assert calls == [(bot.GEMINI_MODEL, "decorator kya hota hai?", "previous answer", bot.Language.HINGLISH)]
 
 
 def test_chat_generation_uses_short_response_instruction_and_token_headroom():
@@ -109,7 +109,7 @@ def test_chat_generation_uses_short_response_instruction_and_token_headroom():
         {"aio": type("Aio", (), {"models": Models()})()},
     )()
     buddy = bot.BuddyBot(gemini_client=client)
-    reply = asyncio.run(buddy._ask_gemini_async("hello"))
+    reply = asyncio.run(buddy._ask_gemini_async(bot.GEMINI_MODEL, "hello"))
 
     assert reply == "Theek hai bhai 😂"
     config = calls[0]["config"]

@@ -24,6 +24,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
 BOT_PREFIX = os.getenv("BOT_PREFIX", "/")
 CHAT_MAX_WORDS = int(os.getenv("CHAT_MAX_WORDS", "25"))
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "20"))
@@ -411,23 +412,70 @@ class BuddyBot(commands.Bot):
             )
         return self.gemini_client
 
-    async def _run_gemini(self, operation: Callable, *args):
-        """Bound and time an SDK request; cancellation depends on SDK support."""
-        try:
-            await asyncio.wait_for(
-                self._gemini_slots.acquire(),
-                timeout=GEMINI_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError as exc:
-            raise RuntimeError("Buddy is busy, try again in a moment 💀") from exc
+    async def _run_gemini(self, operation: Callable, *args, model: str = GEMINI_MODEL):
+        """Bound and time an SDK request with optional fallback model.
 
-        try:
-            result = operation(*args)
-            if inspect.isawaitable(result):
-                return await asyncio.wait_for(result, timeout=GEMINI_TIMEOUT_SECONDS)
-            return result
-        finally:
-            self._gemini_slots.release()
+        Args:
+            operation: Instance method that takes (model, *args) and returns a result
+            *args: Arguments to pass to operation (after model)
+            model: Primary model name to use
+
+        Returns:
+            Result from successful operation
+
+        Raises:
+            Exception: If both primary and fallback models fail
+        """
+        models_to_try = [model]
+        if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != model:
+            models_to_try.append(GEMINI_FALLBACK_MODEL)
+
+        last_exception = None
+        for attempt, model_name in enumerate(models_to_try):
+            try:
+                await asyncio.wait_for(
+                    self._gemini_slots.acquire(),
+                    timeout=GEMINI_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError("Buddy is busy, try again in a moment 💀") from exc
+
+            try:
+                # Pass self as first arg since operation is a bound method
+                result = operation(model_name, *args)
+                if inspect.isawaitable(result):
+                    return await asyncio.wait_for(result, timeout=GEMINI_TIMEOUT_SECONDS)
+                return result
+            except Exception as exc:
+                last_exception = exc
+                error_msg = str(exc).lower()
+                exc_type = type(exc).__name__.lower()
+                # Check if error is retryable (503, timeout, network errors)
+                is_retryable = any(
+                    code in error_msg
+                    for code in ("503", "unavailable", "overloaded", "timeout", "connection", "network", "temporary")
+                ) or exc_type in ("timeouterror", "asyncio.timeouterror", "connecttimeouterror", "readtimeouterror")
+                # Don't retry on auth errors, invalid requests, etc.
+                is_non_retryable = any(
+                    code in error_msg
+                    for code in ("401", "403", "invalid", "unauthorized", "permission", "api key", "quota exceeded", "429")
+                )
+
+                if attempt == 0 and is_retryable and not is_non_retryable and len(models_to_try) > 1:
+                    # Log fallback attempt
+                    print(f"Gemini model '{model_name}' unavailable ({type(exc).__name__}), trying fallback '{models_to_try[1]}'")
+                    # Release semaphore before trying fallback
+                    self._gemini_slots.release()
+                    continue
+                else:
+                    # Re-raise the exception
+                    raise
+            finally:
+                self._gemini_slots.release()
+
+        # If we exhausted all models, raise the last exception
+        assert last_exception is not None, "No models were attempted"
+        raise last_exception
 
     def _on_cooldown(self, message: discord.Message) -> bool:
         now = time.monotonic()
@@ -438,11 +486,11 @@ class BuddyBot(commands.Bot):
         self._cooldowns[key] = now
         return False
 
-    async def extract_room_intent(self, prompt: str) -> RoomIntent | None:
+    async def extract_room_intent(self, model: str, prompt: str) -> RoomIntent | None:
         schema = RoomIntent.model_json_schema()
         schema.pop("additionalProperties", None)
         response = await self._gemini().aio.models.generate_content(
-            model=GEMINI_MODEL,
+            model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=ROOM_INTENT_INSTRUCTION,
@@ -492,6 +540,7 @@ class BuddyBot(commands.Bot):
 
     async def _ask_gemini_async(
         self,
+        model: str,
         prompt: str,
         reply_context: str | None = None,
         language: Language = Language.HINGLISH,
@@ -500,7 +549,7 @@ class BuddyBot(commands.Bot):
         if reply_context:
             context = f"Message being replied to:\n{reply_context}\n\nUser:\n{prompt}"
         response = await self._gemini().aio.models.generate_content(
-            model=GEMINI_MODEL,
+            model=model,
             contents=context,
             config=types.GenerateContentConfig(
                 system_instruction=get_system_instruction(language),

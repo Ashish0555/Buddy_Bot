@@ -594,3 +594,166 @@ def test_explicit_language_override(monkeypatch):
     # Note: language is now passed explicitly, but we can test the detect function directly
     lang = bot.detect_language("bhai kya haal hai reply in english")
     assert lang == bot.Language.ENGLISH
+
+
+def test_gemini_primary_model_success(monkeypatch):
+    """Test successful response from primary model without fallback."""
+    buddy = buddy_with_user()
+    calls = []
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return type("Response", (), {"text": "Primary model response 😂"})()
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    reply = asyncio.run(buddy.ask_gemini("hello", language=bot.Language.ENGLISH))
+    
+    assert reply == "Primary model response 😂"
+    assert len(calls) == 1
+    assert calls[0]["model"] == bot.GEMINI_MODEL
+
+
+def test_gemini_fallback_on_503(monkeypatch):
+    """Test fallback to secondary model when primary returns 503."""
+    buddy = buddy_with_user()
+    calls = []
+    attempt = [0]
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            attempt[0] += 1
+            if attempt[0] == 1:
+                # First call (primary model) raises 503
+                raise RuntimeError("503 UNAVAILABLE: This model is currently overloaded")
+            # Second call (fallback model) succeeds
+            return type("Response", (), {"text": "Fallback model response 😂"})()
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    reply = asyncio.run(buddy.ask_gemini("hello", language=bot.Language.ENGLISH))
+    
+    assert reply == "Fallback model response 😂"
+    assert len(calls) == 2
+    assert calls[0]["model"] == bot.GEMINI_MODEL
+    assert calls[1]["model"] == bot.GEMINI_FALLBACK_MODEL
+
+
+def test_gemini_both_models_fail(monkeypatch):
+    """Test friendly error when both primary and fallback models fail."""
+    buddy = buddy_with_user()
+    calls = []
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            raise RuntimeError("503 UNAVAILABLE: This model is currently overloaded")
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    reply = asyncio.run(buddy.ask_gemini("hello", language=bot.Language.ENGLISH))
+    
+    assert reply == bot.get_failure_reply(bot.Language.ENGLISH)
+    assert len(calls) == 2
+    assert calls[0]["model"] == bot.GEMINI_MODEL
+    assert calls[1]["model"] == bot.GEMINI_FALLBACK_MODEL
+
+
+def test_gemini_no_fallback_on_auth_error(monkeypatch):
+    """Test that 401/403 errors don't trigger fallback."""
+    buddy = buddy_with_user()
+    calls = []
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            raise RuntimeError("401 UNAUTHORIZED: Invalid API key")
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    reply = asyncio.run(buddy.ask_gemini("hello", language=bot.Language.ENGLISH))
+    
+    assert reply == bot.get_failure_reply(bot.Language.ENGLISH)
+    assert len(calls) == 1  # Only primary model tried
+    assert calls[0]["model"] == bot.GEMINI_MODEL
+
+
+def test_gemini_room_intent_fallback_on_503(monkeypatch):
+    """Test fallback for structured room intent extraction."""
+    buddy = buddy_with_user()
+    calls = []
+    attempt = [0]
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            attempt[0] += 1
+            if attempt[0] == 1:
+                raise RuntimeError("503 UNAVAILABLE: This model is currently overloaded")
+            return type(
+                "Response",
+                (),
+                {
+                    "text": '{"is_room_request": true, "map": "sf", "players": 4}',
+                },
+            )()
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    reply = asyncio.run(buddy.create_room_reply("create a room in smash fort"))
+    
+    assert "smashfort" in reply.lower()
+    assert len(calls) == 2
+    assert calls[0]["model"] == bot.GEMINI_MODEL
+    assert calls[1]["model"] == bot.GEMINI_FALLBACK_MODEL
+    # Verify structured schema is preserved on fallback
+    assert calls[1]["config"].response_json_schema is not None
+
+
+def test_gemini_timeout_triggers_fallback(monkeypatch):
+    """Test that timeout errors trigger fallback."""
+    buddy = buddy_with_user()
+    calls = []
+    attempt = [0]
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            attempt[0] += 1
+            if attempt[0] == 1:
+                raise asyncio.TimeoutError("Request timed out")
+            return type("Response", (), {"text": "Fallback after timeout 😂"})()
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    reply = asyncio.run(buddy.ask_gemini("hello", language=bot.Language.ENGLISH))
+    
+    assert reply == "Fallback after timeout 😂"
+    assert len(calls) == 2
+    assert calls[0]["model"] == bot.GEMINI_MODEL
+    assert calls[1]["model"] == bot.GEMINI_FALLBACK_MODEL
+
+
+def test_gemini_fallback_logs_model_names(monkeypatch, capsys):
+    """Test that fallback logs model names and error codes."""
+    buddy = buddy_with_user()
+    attempt = [0]
+
+    class Models:
+        async def generate_content(self, **kwargs):
+            attempt[0] += 1
+            if attempt[0] == 1:
+                raise RuntimeError("503 UNAVAILABLE: model overloaded")
+            return type("Response", (), {"text": "Logged fallback 😂"})()
+
+    buddy.gemini_client = type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+    
+    asyncio.run(buddy.ask_gemini("hello", language=bot.Language.ENGLISH))
+    
+    captured = capsys.readouterr()
+    assert "unavailable" in captured.out.lower() or "503" in captured.out
+    assert "fallback" in captured.out.lower()
+    assert bot.GEMINI_MODEL in captured.out
+    assert bot.GEMINI_FALLBACK_MODEL in captured.out
