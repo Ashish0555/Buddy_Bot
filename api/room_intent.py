@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import random
 from typing import Literal
 
@@ -94,6 +95,167 @@ def _get_arena_id(map_name: str) -> str:
     """Get the arena ID for a map name, normalizing first."""
     normalized = _normalize_map_name(map_name)
     return normalize_arena(normalized)
+
+
+def _extract_abbreviated_settings(text: str) -> dict:
+    """Extract abbreviated settings like st20, tm10 from text."""
+    result = {}
+    # st20 = score target 20, tm20 = timer 20
+    score_match = re.search(r"\bst(\d+)\b", text.lower())
+    if score_match:
+        result["round_format"] = "score"
+        result["value"] = int(score_match.group(1))
+    else:
+        timer_match = re.search(r"\btm(\d+)\b", text.lower())
+        if timer_match:
+            result["round_format"] = "timer"
+            result["value"] = int(timer_match.group(1))
+    return result
+
+
+def _deterministic_room_intent(text: str) -> RoomIntent | None:
+    """Deterministically extract room intent from clear gaming requests.
+    
+    Handles patterns like:
+    - "send skate city st20 ctf map"
+    - "create SF CTF map"
+    - "make CTF in skate city"
+    - "dz me 2 bande bina team"
+    - "send SF CTF map"
+    - "give me a 6 player match"
+    
+    Returns RoomIntent if high-confidence room request detected, None otherwise.
+    """
+    normalized = " ".join(text.casefold().split())
+    
+    # Check for explicit non-room patterns first
+    if re.search(r"\b(?:banaya|banaaya|made|created)\s+tha\b", normalized):
+        return None
+    if re.search(r"\b(?:room|match)\b.*\b(?:kaise|how|system|meaning)\b", normalized):
+        return None
+    if re.search(r"\b(?:what|how|why|kya|kaise)\b.*\b(?:is|hai|hota|works?)\b", normalized):
+        return None
+    if re.search(r"\b(?:tell|show|picture|image|photo)\b", normalized):
+        return None
+    
+    # Look for strong room request indicators
+    has_action = bool(re.search(
+        r"\b(?:send|create|make|give|generate|build|khol|open|bnao|bna|bnado|bnade|bna\s+de|"
+        r"room\s+bna|match\s+bna|match\s+create|room\s+create)\b",
+        normalized
+    ))
+    has_room_noun = bool(re.search(r"\b(?:room|match)\b", normalized))
+    has_mode = bool(re.search(r"\b(?:ctf|ffa)\b", normalized))
+    has_map_shortform = bool(re.search(
+        r"\b(?:sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b", normalized
+    ))
+    has_map_name = bool(re.search(
+        r"\b(?:skate\s+city|smash\s+fort|smash\s+island|gravel\s+pit|dropzone|lava\s+pit|"
+        r"graveyard|sky\s+arena|pinball|showdown|temples|tunnels|space\s+station|"
+        r"battle\s+box|toxic\s+tower|snowpark|snow\s+shrine|steky|slick|boneyard|toxic|"
+        r"sand\s+box|old\s+graveyard)\b",
+        normalized
+    ))
+    has_player_count = bool(re.search(r"\b\d+\s*(?:player|players|bande|bandon|logo|logon)\b", normalized))
+    has_team_setting = bool(re.search(r"\b(?:team|bina\s+team|without\s+team|no\s+team)\b", normalized))
+    has_abbreviated = bool(re.search(r"\b(?:st|tm)\d+\b", normalized))
+    has_random = bool(re.search(r"\b(?:random|any)\b", normalized))
+    
+    # High confidence if we have action + (mode or map or room noun) OR player count + mode/map/room noun
+    is_high_confidence = (
+        (has_action and (has_mode or has_map_shortform or has_map_name or has_room_noun)) or
+        (has_player_count and (has_mode or has_map_shortform or has_map_name or has_team_setting or has_room_noun)) or
+        (has_random and has_mode) or
+        (has_abbreviated and (has_mode or has_map_shortform or has_map_name))
+    )
+    
+    if not is_high_confidence:
+        return None
+    
+    # Extract map
+    map_name = None
+    # Check shortforms first
+    shortform_match = re.search(
+        r"\b(sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b",
+        normalized
+    )
+    if shortform_match:
+        map_name = shortform_match.group(1)
+    else:
+        # Check full map names
+        map_patterns = [
+            (r"\bskate\s+city\b", "skate city"),
+            (r"\bsmash\s+fort\b", "smash fort"),
+            (r"\bsmash\s+island\b", "smash island"),
+            (r"\bgravel\s+pit\b", "gravel pit"),
+            (r"\bdropzone\b", "dropzone"),
+            (r"\blava\s+pit\b", "lava pit"),
+            (r"\bgraveyard\b", "the graveyard"),
+            (r"\bsky\s+arena\s+temples\b", "sky arena temples"),
+            (r"\bsky\s+arena\s+tunnels\b", "sky arena tunnels"),
+            (r"\bsky\s+arena\s+showdown\b", "sky arena showdown"),
+            (r"\bsky\s+arena\s+pinball\b", "sky arena pinball"),
+            (r"\bsky\s+arena\s+dropzone\b", "dropzone"),
+            (r"\bpinball\b", "pinball"),
+            (r"\bshowdown\b", "showdown"),
+            (r"\btemples\b", "temples"),
+            (r"\btunnels\b", "tunnels"),
+            (r"\bspace\s+station\b", "space station"),
+            (r"\bbattle\s+box\b", "battle box"),
+            (r"\btoxic\s+towers?\b", "toxic towers"),
+            (r"\bsnowpark\b", "snowpark"),
+            (r"\bsnow\s+shrine\b", "snow shrine"),
+            (r"\bsteky\b", "steky's speedway"),
+            (r"\bslick\b", "slick 'n slide"),
+            (r"\bboneyard\b", "boneyard basin"),
+            (r"\bold\s+graveyard\b", "the old graveyard"),
+            (r"\bsand\s+box\b", "sand box"),
+        ]
+        for pattern, name in map_patterns:
+            if re.search(pattern, normalized):
+                map_name = name
+                break
+    
+    # Extract mode
+    mode = None
+    if re.search(r"\bctf\b", normalized):
+        mode = "ctf"
+    elif re.search(r"\bffa\b", normalized):
+        mode = "ffa"
+    
+    # Extract players
+    players = None
+    player_match = re.search(r"\b(\d+)\s*(?:player|players|bande|bandon|logo|logon)\b", normalized)
+    if player_match:
+        players = int(player_match.group(1))
+    
+    # Extract team setting
+    teams = None
+    if re.search(r"\bbina\s+team\b|\bwithout\s+team\b|\bno\s+team\b", normalized):
+        teams = False
+    elif re.search(r"\bteam\b", normalized) and not re.search(r"\bbina\s+team\b|\bwithout\s+team\b|\bno\s+team\b", normalized):
+        teams = True
+    
+    # Extract abbreviated settings (st20, tm10)
+    abbreviated = _extract_abbreviated_settings(normalized)
+    round_format = abbreviated.get("round_format")
+    value = abbreviated.get("value")
+    
+    # If we have high confidence, return the intent (even with just defaults)
+    # This handles generic "make a room" requests
+    if is_high_confidence:
+        return RoomIntent(
+            is_room_request=True,
+            map=map_name,
+            mode=mode,
+            players=players,
+            round_format=round_format,
+            value=value,
+            teams=teams,
+            enabled_weapons=[],
+        )
+    
+    return None
 
 
 def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
@@ -214,3 +376,12 @@ def create_room_from_intent(intent: RoomIntent, *, random_choice=None) -> str:
     return create_room_url(
         **resolve_room_intent(intent, random_choice=random_choice)
     )
+
+
+__all__ = [
+    "RoomIntent",
+    "RoomIntentError",
+    "resolve_room_intent",
+    "create_room_from_intent",
+    "_deterministic_room_intent",
+]

@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from api.room_intent import RoomIntent, RoomIntentError, create_room_from_intent
+from api.room_intent import RoomIntent, RoomIntentError, create_room_from_intent, _deterministic_room_intent
 
 load_dotenv()
 
@@ -60,10 +60,21 @@ ROOM_INTENT_INSTRUCTION = """
 Extract a Smash Karts room request from the user's current message.
 Return only explicitly stated settings; use null for unspecified settings.
 Understand English, Hindi, Hinglish, slang, typos such as bnado, bna de,
-and invincival. A request to make/create/bana a room sets is_room_request
-to true. Unrelated chat sets it to false.
-Recognize all supported map aliases, FFA/CTF, player counts, timer minutes,
-score targets, team on/off, and explicitly enabled weapon names.
+and invincival. A request to make/create/bana/send/give/generate/build a room
+sets is_room_request to true. Unrelated chat sets it to false.
+
+IMPORTANT: Buddy creates Smash Karts invitation URLs (room links).
+- "Send [map] [mode] map" or "create [map] [mode] map" means CREATE A ROOM LINK
+  on that map with that mode, NOT upload a file or create a custom map.
+- "Send SF CTF map" = create a CTF room on Smash Fort map.
+- "Create skate city st20 ctf map" = create a CTF room on Skate City with score target 20.
+- Recognize st20, st10, st3, st6, st1 as SCORE TARGET abbreviations (st = score target).
+- Recognize tm20, tm10, tm6, tm3 as TIMER abbreviations (tm = timer minutes).
+- Recognize all supported map aliases: sf, si, gp, dz, lp, pp, sd, te, tu, t, ss, gy, sns,
+  and full names: Skate City, Smash Fort, Smash Island, Gravel Pit, Dropzone, Lava Pit,
+  Graveyard, Sky Arena (temples/tunnels/showdown/pinball/dropzone), etc.
+- Recognize FFA/CTF, player counts, timer minutes, score targets, team on/off,
+  and explicitly enabled weapon names.
 Never invent defaults, URLs, maps, settings, or weapons.
 """
 
@@ -326,36 +337,90 @@ def extract_response_text(response) -> str | None:
 
 
 def is_room_request_candidate(text: str) -> bool:
-    """Cheap gate that avoids an intent API call for ordinary conversation."""
+    """Cheap gate that avoids an intent API call for ordinary conversation.
+    
+    Recognizes Smash Karts room requests in English, Hindi, Hinglish including
+    abbreviated forms like 'send skate city st20 ctf map' without requiring
+    the literal word 'room'.
+    """
     normalized = " ".join(text.casefold().split())
     if re.search(r"\b(?:banaya|banaaya|made|created)\s+tha\b", normalized):
         return False
     if re.search(r"\b(?:room|match)\b.*\b(?:kaise|how|system|meaning)\b", normalized):
         return False
 
+    # Room nouns that indicate a room request
     room_nouns = r"(?:room|match|game)"
+    # Action words for creating/opening rooms
     action_words = (
         r"(?:bana(?:\s+de)?|bnade|bnado|bna\s+de|bnao|create|make|khol(?:\s+de)?|"
-        r"open|start|chahiye|karo|kar\s+do|de\s+de)"
+        r"open|start|chahiye|karo|kar\s+do|de\s+de|send|give|generate|build)"
     )
+    
+    # Pattern 1: room noun + action word (e.g., "room bana", "bana room")
     if re.search(rf"\b{room_nouns}\b.*\b{action_words}\b", normalized):
         return True
     if re.search(rf"\b{action_words}\b.*\b{room_nouns}\b", normalized):
         return True
-    if re.search(r"\b(?:random|ctf|ffa)\s+(?:map\s+pe\s+)?(?:room|match)\b", normalized):
+    
+    # Pattern 2: random/ctf/ffa + map + room/match (e.g., "random ctf map")
+    if re.search(r"\b(?:random|ctf|ffa)\s+(?:map\s+pe\s+)?(?:room|match|map)\b", normalized):
         return True
+    
+    # Pattern 3: ctf/ffa + play/khelna + known map names
     if re.search(
         r"\b(?:ctf|ffa)\b.*\b(?:khel(?:na)?|play)\b.*\b"
-        r"(?:sf|si|gp|dz|lp|dropzone|lava\s+pit|smash\s+fort|smash\s+island)\b",
+        r"(?:sf|si|gp|dz|lp|dropzone|lava\s+pit|smash\s+fort|smash\s+island|"
+        r"gravel\s+pit|steky|slick|snowpark|snow\s+shrine|boneyard|toxic|sand\s+box|"
+        r"graveyard|old\s+graveyard|sky\s+arena|pinball|showdown|temples|tunnels|"
+        r"space\s+station|battle\s+box|skate\s+city|toxic\s+tower)\b",
         normalized,
     ):
         return True
+    
+    # Pattern 4: ctf/ffa + play/khelna (general)
     if re.search(r"\b(?:ctf|ffa)\b.*\b(?:khel(?:na)?|play)\b", normalized):
         return True
-    if re.search(r"\b\d+\s*(?:player|players|bande|bandon|logo|logon)\b.*\broom\b", normalized):
+    
+    # Pattern 5: player count + room/match
+    if re.search(r"\b\d+\s*(?:player|players|bande|bandon|logo|logon)\b.*\b(?:room|match)\b", normalized):
         return True
-    if re.search(r"\b(?:sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b.*\broom\b", normalized):
+    
+    # Pattern 6: map shortforms + room/match
+    if re.search(r"\b(?:sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b.*\b(?:room|match)\b", normalized):
         return True
+    
+    # Pattern 7: Gaming-specific requests WITHOUT "room" word
+    # send/create/make/give/generate/build + map + ctf/ffa/stXX
+    if re.search(
+        r"\b(?:send|create|make|give|generate|build|khol|open)\b.*\b"
+        r"(?:ctf|ffa|st\d+|score\s*\d+|timer\s*\d+)\b",
+        normalized,
+    ):
+        return True
+    
+    # Pattern 8: Map name/shortform + player count + ctf/ffa/team (no "room")
+    if re.search(
+        r"\b(?:sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns|skate\s+city|smash\s+fort|"
+        r"smash\s+island|gravel\s+pit|dropzone|lava\s+pit|graveyard|sky\s+arena)\b"
+        r".*\b\d+\s*(?:player|players|bande|bandon)\b.*\b(?:ctf|ffa|team|bina\s+team)\b",
+        normalized,
+    ):
+        return True
+    
+    # Pattern 9: Map shortform + player count + team on/off (e.g., "dz me 2 bande bina team")
+    if re.search(
+        r"\b(?:sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b"
+        r".*\b\d+\s*(?:player|players|bande|bandon)\b"
+        r".*\b(?:team|bina\s+team|without\s+team|no\s+team)\b",
+        normalized,
+    ):
+        return True
+    
+    # Pattern 10: "random ctf/ffa map" (without "room")
+    if re.search(r"\b(?:random|any)\s+(?:ctf|ffa)\s+map\b", normalized):
+        return True
+    
     return False
 
 
@@ -432,6 +497,7 @@ class BuddyBot(commands.Bot):
 
         last_exception = None
         for attempt, model_name in enumerate(models_to_try):
+            # Acquire semaphore for this attempt
             try:
                 await asyncio.wait_for(
                     self._gemini_slots.acquire(),
@@ -464,9 +530,8 @@ class BuddyBot(commands.Bot):
                 if attempt == 0 and is_retryable and not is_non_retryable and len(models_to_try) > 1:
                     # Log fallback attempt
                     print(f"Gemini model '{model_name}' unavailable ({type(exc).__name__}), trying fallback '{models_to_try[1]}'")
-                    # Release semaphore before trying fallback
-                    self._gemini_slots.release()
-                    continue
+                    # Semaphore will be released by finally block, next iteration re-acquires
+                    pass
                 else:
                     # Re-raise the exception
                     raise
@@ -512,8 +577,17 @@ class BuddyBot(commands.Bot):
         except Exception as exc:
             print("Room intent error:", repr(exc))
             return get_failure_reply(language)
+        
+        # If Gemini says it's not a room request, try deterministic fallback
+        # for high-confidence room requests
         if intent is None or not intent.is_room_request:
-            return None
+            deterministic_intent = _deterministic_room_intent(prompt)
+            if deterministic_intent is not None:
+                print(f"Using deterministic fallback for: {prompt[:50]}...")
+                intent = deterministic_intent
+            else:
+                return None
+        
         try:
             url = create_room_from_intent(intent)
             map_name = intent.map or "random map"
