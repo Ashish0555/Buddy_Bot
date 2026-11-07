@@ -617,6 +617,8 @@ def test_gemini_primary_model_success(monkeypatch):
 
 def test_gemini_fallback_on_503(monkeypatch):
     """Test fallback to secondary model when primary returns 503."""
+    # Use a different fallback model name to ensure fallback is triggered
+    monkeypatch.setattr(bot, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
     buddy = buddy_with_user()
     calls = []
     attempt = [0]
@@ -643,6 +645,8 @@ def test_gemini_fallback_on_503(monkeypatch):
 
 def test_gemini_both_models_fail(monkeypatch):
     """Test friendly error when both primary and fallback models fail."""
+    # Set module-level variable to ensure fallback is triggered
+    monkeypatch.setattr(bot, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
     buddy = buddy_with_user()
     calls = []
 
@@ -682,6 +686,8 @@ def test_gemini_no_fallback_on_auth_error(monkeypatch):
 
 def test_gemini_room_intent_fallback_on_503(monkeypatch):
     """Test fallback for structured room intent extraction."""
+    # Set module-level variable to ensure fallback is triggered
+    monkeypatch.setattr(bot, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
     buddy = buddy_with_user()
     calls = []
     attempt = [0]
@@ -714,6 +720,8 @@ def test_gemini_room_intent_fallback_on_503(monkeypatch):
 
 def test_gemini_timeout_triggers_fallback(monkeypatch):
     """Test that timeout errors trigger fallback."""
+    # Set module-level variable to ensure fallback is triggered
+    monkeypatch.setattr(bot, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
     buddy = buddy_with_user()
     calls = []
     attempt = [0]
@@ -738,6 +746,8 @@ def test_gemini_timeout_triggers_fallback(monkeypatch):
 
 def test_gemini_fallback_logs_model_names(monkeypatch, capsys):
     """Test that fallback logs model names and error codes."""
+    # Set module-level variable to ensure fallback is triggered
+    monkeypatch.setattr(bot, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
     buddy = buddy_with_user()
     attempt = [0]
 
