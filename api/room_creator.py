@@ -5,7 +5,7 @@ This module ONLY builds the CrazyGames invite URL.
 It does not connect to Photon and does not create the room itself.
 
 Verified from controlled room-link tests:
-- India room IDs work with the format: in3 + 5 digits.
+- India room IDs work with the format: in6 + 5 digits.
 - mdfrs=0 means no modifiers.
 - wpns is a weapon bitmask.
 - mode encodes round format/value and Teams.
@@ -32,8 +32,8 @@ BASE_URL = "https://smashkarts.io/link/"
 # ------------------------------------------------------------------
 
 def generate_india_room_id() -> str:
-    """Generate a compatible-looking India-region room id: in3xxxxx."""
-    return f"in3{random.randint(0, 99_999):05d}"
+    """Generate a compatible-looking India-region room id: in6xxxxx."""
+    return f"in6{random.randint(0, 99_999):05d}"
 
 
 # ------------------------------------------------------------------

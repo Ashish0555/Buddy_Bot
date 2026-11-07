@@ -445,7 +445,7 @@ class TestExistingFunctionalityPreserved:
         assert "smashkarts.io/link/" in url
         assert "mode=" in url
         assert "wpns=" in url
-        assert "room=in3" in url
+        assert "room=in6" in url
         assert "arena=gravelpit" in url
         assert "mdfrs=0" in url
 

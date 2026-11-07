@@ -29,7 +29,7 @@ def test_successful_room_sends_one_sentence_then_one_url(monkeypatch):
     monkeypatch.setattr(
         bot,
         "create_room_from_intent",
-        lambda intent: "https://smashkarts.io/link/?room=in312345",
+        lambda intent: "https://smashkarts.io/link/?room=in612345",
     )
     monkeypatch.setattr(bot.random, "choice", lambda options: options[0])
 
