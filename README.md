@@ -76,7 +76,8 @@ Room defaults are applied in Python:
 - Unspecified players: 6
 - Unspecified mode: FFA for 4 or fewer players, otherwise CTF
 - Unspecified map: random supported map
-- Unspecified round: 10-minute timer
+- Unspecified FFA round: 6-minute timer
+- Unspecified CTF round: 10-minute timer
 - FFA teams: enabled unless explicitly disabled
 - CTF teams setting: ignored
 - `machine_gun`, `invincibility`, and `lob_sentry`: disabled by default

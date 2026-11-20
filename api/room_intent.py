@@ -327,7 +327,10 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
 
     if intent.round_format is None:
         round_format = "timer"
-        value = intent.value if intent.value is not None else 10
+        if intent.value is not None:
+            value = intent.value
+        else:
+            value = 6 if mode == "ffa" else 10
     else:
         round_format = intent.round_format
         if intent.value is None:

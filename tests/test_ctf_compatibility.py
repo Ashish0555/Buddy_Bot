@@ -443,9 +443,15 @@ class TestExistingFunctionalityPreserved:
         room = resolve("smash fort ctf", mode="ctf", players=8, teams=True)
         assert room["teams"] is False
 
-    def test_default_timer_10_minutes(self):
-        """Default timer is 10 minutes."""
+    def test_default_ffa_timer_6_minutes(self):
+        """Default FFA timer is 6 minutes."""
         room = resolve("gravel pit", players=6)
+        assert room["round_format"] == "timer"
+        assert room["value"] == 6
+
+    def test_default_ctf_timer_remains_10_minutes(self):
+        """Default CTF timer remains 10 minutes."""
+        room = resolve("smash fort ctf", mode="ctf", players=6)
         assert room["round_format"] == "timer"
         assert room["value"] == 10
 

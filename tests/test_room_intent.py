@@ -1,12 +1,18 @@
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "api"))
 
-from room_creator import DEFAULT_WEAPONS, WEAPON_BITS
-from room_intent import RoomIntent, RoomIntentError, resolve_room_intent
+from room_creator import DEFAULT_WEAPONS, WEAPON_BITS, encode_ffa_mode
+from room_intent import (
+    RoomIntent,
+    RoomIntentError,
+    create_room_from_intent,
+    resolve_room_intent,
+)
 
 
 def resolve(text_map=None, **kwargs):
@@ -55,6 +61,26 @@ def test_four_players_twenty_minutes_defaults_to_ffa_teams():
     assert room["game_mode"] == "ffa"
     assert room["teams"] is True
     assert room["value"] == 20
+
+
+def test_ffa_without_timer_defaults_to_six_minutes():
+    room = resolve("sf", mode="ffa", players=4)
+    assert room["round_format"] == "timer"
+    assert room["value"] == 6
+
+
+def test_ffa_default_timer_is_encoded_in_room_url():
+    url = create_room_from_intent(
+        RoomIntent(is_room_request=True, map="sf", mode="ffa", players=4)
+    )
+    query = parse_qs(urlparse(url).query)
+    assert query["mode"] == [str(encode_ffa_mode("timer", 6, teams=True, max_players=4))]
+
+
+def test_ctf_without_timer_keeps_ten_minute_default():
+    room = resolve("sfc", mode="ctf", players=6)
+    assert room["round_format"] == "timer"
+    assert room["value"] == 10
 
 
 def test_explicit_timer_value_without_format_is_preserved():
