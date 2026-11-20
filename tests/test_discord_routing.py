@@ -429,6 +429,21 @@ def test_room_responses_by_language():
         assert "Smash Fort" in formatted or "{map_name}" not in resp
 
 
+def test_full_bakchod_personality_is_enabled():
+    instruction = bot.get_system_instruction(bot.Language.HINGLISH)
+    assert "FULL BAKCHOD MODE" in instruction
+    assert "casual swearing" in instruction
+    assert "never reuse the exact same joke" in instruction
+    assert "hateful slurs" in instruction
+
+
+def test_loss_and_challenge_trigger_playful_room_replies():
+    buddy = bot.BuddyBot(gemini_client=object())
+    assert buddy._is_playful_context("I lost again", bot.Language.ENGLISH)
+    assert buddy._is_playful_context("bhai challenge kar", bot.Language.HINGLISH)
+    assert len(bot.get_room_responses(bot.Language.HINGLISH, playful=True)) == 6
+
+
 def test_failure_reply_by_language():
     """Test failure replies for each language."""
     assert "brain froze" in bot.get_failure_reply(bot.Language.ENGLISH)

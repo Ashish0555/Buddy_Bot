@@ -41,13 +41,15 @@ CHAT_CHANNEL_IDS = _channel_ids("CHAT_CHANNEL_IDS")
 ROOM_REQUEST_CHANNEL_IDS = _channel_ids("ROOM_REQUEST_CHANNEL_IDS")
 
 SYSTEM_INSTRUCTION = f"""
-You are Buddy, a fun, sarcastic gaming friend in a Discord server.
+You are Buddy, a full-bakchod Indian gaming friend in a Discord server.
 You speak English, Hinglish, Hindi, Tamil, Telugu - always match the user's language.
-Sound like a real friend: funny, witty, casual, comfortable with banter.
-Use light teasing and playful roasting ONLY when the user initiates that vibe
-or explicitly asks for a roast. Never force profanity, hateful slurs, threats,
-or genuinely hostile harassment. Don't start every response with "abe", "bc",
-"bkl", "saale", or "chutiye" - save those for actual banter moments.
+Sound like a chaotic, funny, sarcastic, mischievous gamer friend, not customer support.
+Use natural gaming banter, casual swearing, and mutual roasting when the user
+starts that vibe, asks for a roast, loses, dies, or challenges you. Vary the
+joke, comeback, and opening every time; do not repeat canned lines.
+Never use hateful slurs, threats, targeted harassment, or private information.
+Do not turn ordinary questions or commands into abuse, and do not force profanity
+into every response. Do not censor ordinary casual profanity with asterisks.
 Keep casual replies short and spontaneous, usually 5–20 words, never exceed {CHAT_MAX_WORDS} words for ordinary conversation. Prefer one natural sentence,
 not multiple paragraphs. Skip unnecessary explanations, greetings, and
 follow-up questions. For serious questions or explicit requests for detail,
@@ -106,23 +108,32 @@ ROOM_RESPONSES_HINGLISH = (
     "Ho gaya! Ye raha tera {map_name} room.",
 )
 
-# Playful/banter responses - only used when user engages in banter first
+# Playful/banter responses - used for mutual banter, losses, and challenges
 ROOM_RESPONSES_PLAYFUL_ENGLISH = (
     "Here's your {map_name} room, try not to suck 😂",
     "Room ready. Don't come crying when you lose!",
     "Got your room. Try to get at least one kill 💀",
+    "Your {map_name} arena is live. Please bring better aim this time 😂",
+    "Room deployed. Even the bots are warming up to farm you 💀",
+    "Here's the link. Skill issue is not included in the settings.",
 )
 
 ROOM_RESPONSES_PLAYFUL_HINDI = (
     "Le {map_name} ka room, ab haar mat jaana 😂",
     "Room ready hai, ab rona mat haar ke!",
     "Room bana diya, kuch kills toh kar lena 💀",
+    "Tera {map_name} room ready hai, ab apni izzat bhi save kar lena 😂",
+    "Room live hai, bots ko bhi bol diya tujhe zyada na rulaye 💀",
+    "Link le, aaj skill issue ko excuse mat banana.",
 )
 
 ROOM_RESPONSES_PLAYFUL_HINGLISH = (
     "Le bkl {map_name} khel tu 😂",
     "Room ready hai chutiye, ab kuch kills bhi kar lena 😂",
     "Le bc room bana diya, ab haar ke rona mat 💀",
+    "Le bhai {map_name} ready hai, ab apni beizzati speedrun mat karna 😂",
+    "Room live hai, bots bhi teri free farming ke liye excited hain 💀",
+    "Link le, aaj skill issue ko blame mat karna saale.",
 )
 
 GEMINI_FAILURE_REPLY_ENGLISH = "Buddy's brain froze, try again in a bit 💀"
@@ -268,12 +279,23 @@ def detect_language(text: str) -> Language:
 
 def get_system_instruction(language: Language) -> str:
     """Generate system instruction tailored to the detected language."""
-    base = f"""You are Buddy, a fun, sarcastic, witty gaming friend in a Discord server.
-Sound like a real friend: casual, comfortable with banter.
-Use light teasing and playful roasting ONLY when the user initiates that vibe
-or explicitly asks for a roast. Never force profanity, hateful slurs, threats,
-or genuinely hostile harassment. Don't automatically start with "abe", "bc",
-"bkl", "saale", or "chutiye" - save those for actual banter moments.
+    style_cue = random.choice((
+        "Drop a fresh gamer joke or savage comeback when the user's tone invites it.",
+        "Be unpredictable: use a different playful angle instead of a recycled punchline.",
+        "React like a competitive friend who has been watching the match, not a help desk.",
+        "For a loss, death, or challenge, tease the gameplay rather than attacking identity.",
+    ))
+    base = f"""You are Buddy, a full-bakchod Indian gaming friend in a Discord server.
+Sound like a chaotic, funny, sarcastic, witty, mischievous gamer friend.
+You are in FULL BAKCHOD MODE: use natural Hinglish, gamer slang, casual swearing,
+and mutual roasting when the user starts banter, asks for a roast, loses, dies,
+or challenges you. Vary the response and never reuse the exact same joke.
+{style_cue}
+Never use hateful slurs, threats, targeted harassment, or private information.
+Keep teasing focused on the game or the user's stated situation, not identity,
+protected traits, or real-world vulnerability. Do not force profanity into
+serious questions, commands, or every reply, and do not censor ordinary casual
+profanity with asterisks.
 Keep casual replies short and spontaneous, usually 5–20 words, never exceed {CHAT_MAX_WORDS} words for ordinary conversation. Prefer one natural sentence,
 not multiple paragraphs. Skip unnecessary explanations, greetings, and
 follow-up questions. For serious questions or explicit requests for detail,
@@ -285,19 +307,19 @@ AI unless asked. Do not generate room URLs; room creation is handled by Python."
         return base + """
 Respond in natural English. Use English sarcasm, slang, and gaming banter.
 Sound like a witty English-speaking gaming buddy. Don't use Hindi words or Hinglish.
-Only roast if the user starts it or asks for a roast."""
+Roast gameplay, losses, or challenges when invited; keep it playful."""
     elif language == Language.HINDI:
         return base + """
 Respond in Hindi (Devanagari script). Use natural Hindi slang, gaming banter, and sarcasm.
 Sound like a Hindi-speaking gaming buddy. Don't use English or Roman Hindi.
-Only roast if the user starts it or asks for a roast."""
+Roast gameplay, losses, or challenges when invited; keep it playful."""
     elif language == Language.HINGLISH:
         return base + """
 Respond in natural Hinglish (Roman Hindi/Urdu mixed with English).
-Sound like a fun Indian gaming friend: witty, casual, mischievous, bakchod.
-Use playful roasting with words like bc, bkl, saale, chutiye ONLY when the user
-starts that banter or explicitly asks for a roast. Mix English and Hindi naturally.
-Don't force it or overdo the roasting."""
+Sound like a full-bakchod Indian gaming friend: witty, chaotic, casual, and mischievous.
+Use words like bc, bkl, saale, or chutiye when the user invites that banter,
+but keep it focused on gameplay and never use hateful slurs or threats.
+Mix English and Hindi naturally; don't force abuse or overdo the roasting."""
     else:
         return base + """
 Respond in the user's language. Match their tone and writing style naturally."""
@@ -601,8 +623,12 @@ class BuddyBot(commands.Bot):
     def _is_playful_context(self, prompt: str, language: Language) -> bool:
         """Detect if user is engaging in playful banter/roasting."""
         lower = prompt.lower()
-        # Explicit roast requests
-        if re.search(r"\b(?:roast|insult|abuse)\s+me\b", lower):
+        if re.search(
+            r"\b(?:roast|insult|abuse)\s+me\b|"
+            r"\b(?:i\s+lost|lost\s+again|i\s+died|died\s+again|"
+            r"haar\s+gaya|haar\s+gayi|har\s+gaya|noob|challenge)\b",
+            lower,
+        ):
             return True
         # User using heavy slang/roasting first
         if language == Language.HINGLISH:
