@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "api"))
 
@@ -39,6 +40,21 @@ def test_successful_room_sends_one_sentence_then_one_url(monkeypatch):
     assert lines[0]
     assert "http" not in lines[0]
     assert lines[1].startswith("https://smashkarts.io/link/")
+
+
+def test_explicit_steky_alias_overrides_incorrect_model_map(monkeypatch):
+    buddy = bot.BuddyBot(gemini_client=object())
+
+    async def model_intent(*args):
+        return RoomIntent(is_room_request=True, map="skate city", mode="ffa")
+
+    monkeypatch.setattr(buddy, "_run_gemini", model_intent)
+    monkeypatch.setattr(bot.random, "choice", lambda options: options[0])
+
+    reply = asyncio.run(buddy.create_room_reply("Steky FFA"))
+    url = reply.splitlines()[-1]
+    query = parse_qs(urlparse(url).query)
+    assert query["arena"] == ["stekysspeedway"]
 
 
 def test_discord_message_handler_replies_to_mention(monkeypatch):

@@ -369,6 +369,7 @@ MAP_SHORTFORMS = {
     "gp": "gravel pit",
     "speedway": "stekysspeedway",
     "steky": "stekysspeedway",
+    "skate": "skate city",
     "sns": "slicknslide",
     "sp": "snowpark",
     "sr": "snow shrine",

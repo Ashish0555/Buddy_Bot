@@ -10,6 +10,7 @@ from room_creator import DEFAULT_WEAPONS, WEAPON_BITS, encode_ffa_mode
 from room_intent import (
     RoomIntent,
     RoomIntentError,
+    _deterministic_room_intent,
     create_room_from_intent,
     resolve_room_intent,
 )
@@ -115,3 +116,23 @@ def test_explicitly_enabled_default_weapon_is_added_without_resetting_mask():
 def test_unknown_map_is_not_guessed():
     with pytest.raises(RoomIntentError, match="Unknown/untested arena"):
         resolve("made up map")
+
+
+@pytest.mark.parametrize(
+    "text,expected_arena",
+    [
+        ("Steky FFA", "stekysspeedway"),
+        ("FFA Steky", "stekysspeedway"),
+        ("Steky", "stekysspeedway"),
+        ("Steky's Speedway FFA", "stekysspeedway"),
+        ("Skate FFA", "skatecity"),
+        ("FFA Skate", "skatecity"),
+    ],
+)
+def test_steky_and_skate_map_aliases_are_exact_and_order_independent(
+    text, expected_arena
+):
+    intent = _deterministic_room_intent(text)
+    assert intent is not None
+    assert intent.map
+    assert resolve_room_intent(intent)["arena"] == expected_arena

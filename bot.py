@@ -445,6 +445,14 @@ def is_room_request_candidate(text: str) -> bool:
     # Pattern 10: "random ctf/ffa map" (without "room")
     if re.search(r"\b(?:random|any)\s+(?:ctf|ffa)\s+map\b", normalized):
         return True
+
+    # Explicit map + mode requests are valid room commands in either order.
+    if re.search(
+        r"\b(?:steky(?:'s)?\s+speedway|steky|skate(?:\s+city)?)\b", normalized
+    ) and re.search(r"\b(?:ctf|ffa)\b", normalized):
+        return True
+    if re.fullmatch(r"(?:steky(?:'s)?\s+speedway|steky|skate(?:\s+city)?)", normalized):
+        return True
     
     return False
 
@@ -620,6 +628,11 @@ class BuddyBot(commands.Bot):
                 intent = deterministic_intent
             else:
                 return None
+        else:
+            # User-provided exact aliases take priority over model guesses.
+            deterministic_intent = _deterministic_room_intent(prompt)
+            if deterministic_intent is not None and deterministic_intent.map:
+                intent = intent.model_copy(update={"map": deterministic_intent.map})
         
         try:
             url = create_room_from_intent(intent)

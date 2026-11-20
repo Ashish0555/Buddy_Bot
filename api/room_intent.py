@@ -97,6 +97,28 @@ def _get_arena_id(map_name: str) -> str:
     return normalize_arena(normalized)
 
 
+_TEXT_MAP_ALIASES = (
+    ("steky's speedway", "steky's speedway"),
+    ("stekys speedway", "steky's speedway"),
+    ("stekysspeedway", "steky's speedway"),
+    ("steky", "steky's speedway"),
+    ("skate city", "skate city"),
+    ("skate", "skate city"),
+)
+
+
+def _extract_map_from_text(text: str) -> str | None:
+    """Resolve explicit map names and aliases without fuzzy matching."""
+    normalized = " ".join(
+        text.casefold().replace("_", " ").replace("'", "").split()
+    )
+    for alias, map_name in _TEXT_MAP_ALIASES:
+        alias = alias.replace("'", "")
+        if re.search(rf"\b{re.escape(alias)}\b", normalized):
+            return map_name
+    return None
+
+
 def _extract_abbreviated_settings(text: str) -> dict:
     """Extract abbreviated settings like st20, tm10 from text."""
     result = {}
@@ -166,6 +188,9 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
         (has_action and (has_mode or has_map_shortform or has_map_name or has_room_noun)) or
         (has_player_count and (has_mode or has_map_shortform or has_map_name or has_team_setting or has_room_noun)) or
         (has_mode and has_map_name) or
+        (_extract_map_from_text(normalized) is not None and has_mode) or
+        (_extract_map_from_text(normalized) is not None and not has_mode and not has_action
+         and len(normalized.split()) <= 3) or
         (has_random and has_mode) or
         (has_abbreviated and (has_mode or has_map_shortform or has_map_name))
     )
@@ -183,39 +208,43 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
     if shortform_match:
         map_name = shortform_match.group(1)
     else:
-        # Check full map names
-        map_patterns = [
-            (r"\bskate\s+city\b", "skate city"),
-            (r"\bsmash\s+fort\b", "smash fort"),
-            (r"\bsmash\s+island\b", "smash island"),
-            (r"\bgravel\s+pit\b", "gravel pit"),
-            (r"\bdropzone\b", "dropzone"),
-            (r"\blava\s+pit\b", "lava pit"),
-            (r"\bgraveyard\b", "the graveyard"),
-            (r"\bsky\s+arena\s+temples\b", "sky arena temples"),
-            (r"\bsky\s+arena\s+tunnels\b", "sky arena tunnels"),
-            (r"\bsky\s+arena\s+showdown\b", "sky arena showdown"),
-            (r"\bsky\s+arena\s+pinball\b", "sky arena pinball"),
-            (r"\bsky\s+arena\s+dropzone\b", "dropzone"),
-            (r"\bpinball\b", "pinball"),
-            (r"\bshowdown\b", "showdown"),
-            (r"\btemples\b", "temples"),
-            (r"\btunnels\b", "tunnels"),
-            (r"\bspace\s+station\b", "space station"),
-            (r"\bbattle\s+box\b", "battle box"),
-            (r"\btoxic\s+towers?\b", "toxic towers"),
-            (r"\bsnowpark\b", "snowpark"),
-            (r"\bsnow\s+shrine\b", "snow shrine"),
-            (r"\bsteky\b", "steky's speedway"),
-            (r"\bslick\b", "slick 'n slide"),
-            (r"\bboneyard\b", "boneyard basin"),
-            (r"\bold\s+graveyard\b", "the old graveyard"),
-            (r"\bsand\s+box\b", "sand box"),
-        ]
-        for pattern, name in map_patterns:
-            if re.search(pattern, normalized):
-                map_name = name
-                break
+        explicit_map = _extract_map_from_text(normalized)
+        if explicit_map is not None:
+            map_name = explicit_map
+        else:
+            # Check full map names
+            map_patterns = [
+                (r"\bskate\s+city\b", "skate city"),
+                (r"\bsmash\s+fort\b", "smash fort"),
+                (r"\bsmash\s+island\b", "smash island"),
+                (r"\bgravel\s+pit\b", "gravel pit"),
+                (r"\bdropzone\b", "dropzone"),
+                (r"\blava\s+pit\b", "lava pit"),
+                (r"\bgraveyard\b", "the graveyard"),
+                (r"\bsky\s+arena\s+temples\b", "sky arena temples"),
+                (r"\bsky\s+arena\s+tunnels\b", "sky arena tunnels"),
+                (r"\bsky\s+arena\s+showdown\b", "sky arena showdown"),
+                (r"\bsky\s+arena\s+pinball\b", "sky arena pinball"),
+                (r"\bsky\s+arena\s+dropzone\b", "dropzone"),
+                (r"\bpinball\b", "pinball"),
+                (r"\bshowdown\b", "showdown"),
+                (r"\btemples\b", "temples"),
+                (r"\btunnels\b", "tunnels"),
+                (r"\bspace\s+station\b", "space station"),
+                (r"\bbattle\s+box\b", "battle box"),
+                (r"\btoxic\s+towers?\b", "toxic towers"),
+                (r"\bsnowpark\b", "snowpark"),
+                (r"\bsnow\s+shrine\b", "snow shrine"),
+                (r"\bsteky\b", "steky's speedway"),
+                (r"\bslick\b", "slick 'n slide"),
+                (r"\bboneyard\b", "boneyard basin"),
+                (r"\bold\s+graveyard\b", "the old graveyard"),
+                (r"\bsand\s+box\b", "sand box"),
+            ]
+            for pattern, name in map_patterns:
+                if re.search(pattern, normalized):
+                    map_name = name
+                    break
     
     # Extract mode
     mode = None
