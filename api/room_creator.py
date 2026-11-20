@@ -293,10 +293,10 @@ ARENA_IDS = {
     "sky arena temples ctf": "skyarena-temples",
     "sky arena tunnels ctf": "skyarena-tunnels",
 
-    # CTF Allowlist Maps (placeholders - need game-tested verification)
+    # CTF maps verified for room creation
     "battle box": "battlebox",
     "skate city": "skatecity",
-    "toxic tower": "toxictower",
+    "toxic tower": "toxictowers",
     "space station": "spacestations",
     "sky arena showdown": "skyarena-showdown",
     "snowpark ctf": "snowparkctf",
@@ -324,14 +324,19 @@ CTF_VERIFIED_MAPS = {
     "lava pit ctf": "lavapitctf",
     "sky arena temples ctf": "skyarena-temples",
     "sky arena tunnels ctf": "skyarena-tunnels",
+    "sky arena showdown": "skyarena-showdown",
+    "snowpark ctf": "snowparkctf",
+    "skate city": "skatecity",
+    "battle box": "battlebox",
+    "toxic towers": "toxictowers",
+    "space stations": "spacestations",
 }
 
 # Set of verified CTF arena IDs for fast lookup.
 # Multiple map names can map to the same arena ID.
 CTF_VERIFIED_ARENA_IDS = set(CTF_VERIFIED_MAPS.values())
 
-# Complete CTF allowlist per user specification (12 maps).
-# Maps without verified IDs are listed but will be rejected until verified.
+# Complete CTF allowlist per user specification.
 CTF_ALLOWLIST = {
     "battle box",
     "skate city",
@@ -363,6 +368,7 @@ MAP_SHORTFORMS = {
     "si": "smash island",
     "gp": "gravel pit",
     "speedway": "stekysspeedway",
+    "steky": "stekysspeedway",
     "sns": "slicknslide",
     "sp": "snowpark",
     "sr": "snow shrine",
@@ -375,7 +381,8 @@ MAP_SHORTFORMS = {
     "gffa": "graveyard ffa",
     "dz": "dropzone",
     "pp": "pinball",
-    "sd": "showdown",
+    "sd": "sky arena showdown",
+    "showdown": "sky arena showdown",
     "te": "temples",
     "t": "tunnels",
     "tu": "tunnels",

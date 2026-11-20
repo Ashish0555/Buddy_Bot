@@ -165,6 +165,7 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
     is_high_confidence = (
         (has_action and (has_mode or has_map_shortform or has_map_name or has_room_noun)) or
         (has_player_count and (has_mode or has_map_shortform or has_map_name or has_team_setting or has_room_noun)) or
+        (has_mode and has_map_name) or
         (has_random and has_mode) or
         (has_abbreviated and (has_mode or has_map_shortform or has_map_name))
     )
@@ -281,7 +282,8 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
 
     if map_provided:
         assert intent.map is not None
-        map_name = intent.map
+        # Canonicalize aliases before checking CTF verification.
+        map_name = _normalize_map_name(intent.map)
         try:
             arena_id = _get_arena_id(map_name)
             map_is_ctf_verified = arena_id in CTF_VERIFIED_ARENA_IDS
@@ -346,10 +348,9 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
     # Determine arena with mode-aware random selection
     if intent.map:
         try:
-            normalize_arena(intent.map)
+            arena = normalize_arena(_normalize_map_name(intent.map))
         except ValueError as exc:
             raise RoomIntentError(str(exc)) from exc
-        arena = intent.map
     else:
         chooser = random_choice or random.choice
         if mode == "ctf":

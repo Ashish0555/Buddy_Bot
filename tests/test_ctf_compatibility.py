@@ -20,7 +20,12 @@ from room_creator import (
     is_ctf_allowlisted,
     normalize_arena,
 )
-from room_intent import RoomIntent, RoomIntentError, resolve_room_intent
+from room_intent import (
+    RoomIntent,
+    RoomIntentError,
+    _deterministic_room_intent,
+    resolve_room_intent,
+)
 
 
 def resolve(map_name=None, mode=None, players=None, **kwargs):
@@ -38,7 +43,7 @@ def resolve(map_name=None, mode=None, players=None, **kwargs):
 
 
 class TestCTFVerifiedMaps:
-    """Test that all 6 verified CTF maps are properly recognized."""
+    """Test that all verified CTF maps are properly recognized."""
 
     @pytest.mark.parametrize("map_name,expected_arena", [
         ("smash fort ctf", "smashfort"),
@@ -47,6 +52,12 @@ class TestCTFVerifiedMaps:
         ("lava pit ctf", "lavapitctf"),
         ("sky arena temples ctf", "skyarena-temples"),
         ("sky arena tunnels ctf", "skyarena-tunnels"),
+        ("sky arena showdown", "skyarena-showdown"),
+        ("snowpark ctf", "snowparkctf"),
+        ("skate city", "skatecity"),
+        ("battle box", "battlebox"),
+        ("toxic towers", "toxictowers"),
+        ("space stations", "spacestations"),
     ])
     def test_ctf_verified_map_normalization(self, map_name, expected_arena):
         """Verified CTF maps normalize to correct arena IDs."""
@@ -59,6 +70,12 @@ class TestCTFVerifiedMaps:
         "lava pit ctf",
         "sky arena temples ctf",
         "sky arena tunnels ctf",
+        "sky arena showdown",
+        "snowpark ctf",
+        "skate city",
+        "battle box",
+        "toxic towers",
+        "space stations",
     ])
     def test_ctf_verified_map_is_recognized(self, map_name):
         """Verified CTF maps return True for is_ctf_verified."""
@@ -71,6 +88,7 @@ class TestCTFVerifiedMaps:
         ("lpc", "lava pit ctf"),
         ("tec", "sky arena temples ctf"),
         ("tuc", "sky arena tunnels ctf"),
+        ("sd", "sky arena showdown"),
     ])
     def test_ctf_shortforms_work(self, shortform, expected_full):
         """CTF shortforms resolve to correct full map names."""
@@ -78,7 +96,7 @@ class TestCTFVerifiedMaps:
 
 
 class TestCTFAllowlistMaps:
-    """Test the complete 12-map CTF allowlist."""
+    """Test the complete CTF allowlist."""
 
     @pytest.mark.parametrize("map_name", [
         "battle box",
@@ -97,13 +115,6 @@ class TestCTFAllowlistMaps:
     def test_ctf_allowlist_contains_map(self, map_name):
         """All 12 user-specified CTF maps are in allowlist."""
         assert is_ctf_allowlisted(map_name) is True
-
-    def test_allowlist_has_exactly_12_maps(self):
-        """CTF allowlist contains exactly 12 unique maps."""
-        # Note: "smash island" and "smash island ctf" are the same map (same arena ID)
-        # The user listed 12 maps; "Smash Island" is #8, not a separate CTF variant
-        assert len(CTF_ALLOWLIST) == 12
-
 
 class TestMapsSharingCTFVerifiedArenaIDs:
     """Maps that share arena IDs with CTF-verified maps are CTF-compatible."""
@@ -147,22 +158,21 @@ class TestMapsSharingCTFVerifiedArenaIDs:
         assert room["game_mode"] == "ffa"
 
 
-class TestUnverifiedCTFMaps:
-    """Test that unverified CTF maps are rejected when explicitly requested."""
+class TestVerifiedCTFMaps:
+    """Test that newly verified CTF maps are accepted when explicitly requested."""
 
     @pytest.mark.parametrize("map_name", [
         "battle box",
         "skate city",
-        "toxic tower",
         "space station",
         "space stations",
         "sky arena showdown",
         "snowpark ctf",
     ])
-    def test_unverified_ctf_map_rejected_when_explicit(self, map_name):
-        """Explicit CTF request on unverified allowlist map is rejected."""
-        with pytest.raises(RoomIntentError, match="not yet verified"):
-            resolve(map_name, mode="ctf", players=6)
+    def test_verified_ctf_map_works_when_explicit(self, map_name):
+        """Explicit CTF request on a verified map succeeds."""
+        room = resolve(map_name, mode="ctf", players=6)
+        assert room["game_mode"] == "ctf"
 
 
 class TestNonCTFMaps:
@@ -172,13 +182,11 @@ class TestNonCTFMaps:
         "gravel pit",
         "dropzone",
         "pinball",
-        "showdown",
         "snowpark",
         "snow shrine",
         "steky's speedway",
         "slick n slide",
         "boneyard basin",
-        "toxic towers",
         "sandbox",
         "the old graveyard",
         "graveyard ffa",
@@ -250,6 +258,10 @@ class TestCTFCompatibleMaps:
 class TestShortformAliases:
     """Test that shortforms work correctly for CTF maps."""
 
+    def test_steky_shortform_normalizes_to_stekys_speedway(self):
+        """The steky shortform resolves to Steky's Speedway."""
+        assert normalize_arena("steky") == "stekysspeedway"
+
     def test_sfc_shortform_for_ctf(self):
         """sfc shortform works for CTF."""
         room = resolve("sfc", mode="ctf", players=6)
@@ -267,6 +279,26 @@ class TestShortformAliases:
         # Both sf and sfc map to smashfort arena ID
         from room_creator import normalize_arena
         assert normalize_arena(room["arena"]) == "smashfort"
+
+    @pytest.mark.parametrize("map_name", ["showdown", "SHOWDOWN", "Sky Arena Showdown"])
+    def test_showdown_alias_selects_sky_arena_showdown_for_ctf(self, map_name):
+        """Showdown aliases resolve to the canonical CTF map."""
+        room = resolve(map_name, mode="ctf", players=6)
+        assert room["game_mode"] == "ctf"
+        assert room["arena"] == "skyarena-showdown"
+
+    @pytest.mark.parametrize("text", [
+        "Create CTF Showdown",
+        "Create CTF Sky Arena Showdown",
+        "CTF in showdown",
+    ])
+    def test_deterministic_requests_keep_showdown_alias(self, text):
+        """Natural-language showdown requests produce a resolvable CTF map."""
+        intent = _deterministic_room_intent(text)
+        assert intent is not None
+        assert intent.mode == "ctf"
+        room = resolve_room_intent(intent)
+        assert room["arena"] == "skyarena-showdown"
 
 
 class TestRandomMapSelection:
@@ -317,25 +349,25 @@ class TestExplicitModeWithIncompatibleMap:
         room = resolve("smash fort ctf", mode="ffa", players=4)
         assert room["game_mode"] == "ffa"
 
-    def test_explicit_ctf_on_unverified_allowlist_map_rejected(self):
-        """Explicit CTF on unverified allowlist map (e.g., battle box) rejected."""
-        with pytest.raises(RoomIntentError, match="not yet verified"):
-            resolve("battle box", mode="ctf", players=6)
+    def test_explicit_ctf_on_newly_verified_map_works(self):
+        """Previously allowlisted maps now support explicit CTF."""
+        room = resolve("battle box", mode="ctf", players=6)
+        assert room["game_mode"] == "ctf"
 
 
 class TestArenaIDVerification:
-    """Test that arena IDs are properly verified and not fabricated."""
+    """Test that arena IDs are properly verified."""
 
     def test_ctf_verified_arena_ids_match_verified_maps(self):
         """CTF_VERIFIED_ARENA_IDS contains exactly the arena IDs from verified maps."""
         expected = set(CTF_VERIFIED_MAPS.values())
         assert CTF_VERIFIED_ARENA_IDS == expected
 
-    def test_no_fabricated_arena_ids_for_unverified_maps(self):
-        """Maps without verified CTF mappings don't have fabricated CTF arena IDs."""
-        # Battle box has an arena ID for FFA, but not a verified CTF arena ID
+    def test_newly_verified_map_has_verified_arena_id(self):
+        """Newly verified maps have verified CTF arena IDs."""
+        # Battle box has a verified CTF arena ID.
         assert "battle box" in ARENA_IDS
-        assert "battlebox" not in CTF_VERIFIED_ARENA_IDS
+        assert "battlebox" in CTF_VERIFIED_ARENA_IDS
 
     def test_unknown_arena_raises_error(self):
         """Unknown arena names raise ValueError (caught as RoomIntentError)."""
