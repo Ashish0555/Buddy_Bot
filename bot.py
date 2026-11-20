@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 import inspect
 import os
 import random
@@ -24,11 +23,15 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", GEMINI_MODEL)
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "")
 BOT_PREFIX = os.getenv("BOT_PREFIX", "/")
 CHAT_MAX_WORDS = int(os.getenv("CHAT_MAX_WORDS", "25"))
+CHAT_MAX_OUTPUT_TOKENS = int(os.getenv("CHAT_MAX_OUTPUT_TOKENS", "192"))
+REPLY_CONTEXT_MAX_CHARS = int(os.getenv("REPLY_CONTEXT_MAX_CHARS", "600"))
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "20"))
 GEMINI_MAX_CONCURRENCY = int(os.getenv("GEMINI_MAX_CONCURRENCY", "4"))
+GEMINI_CHAT_MAX_CONCURRENCY = int(os.getenv("GEMINI_CHAT_MAX_CONCURRENCY", "8"))
 MESSAGE_COOLDOWN_SECONDS = float(os.getenv("MESSAGE_COOLDOWN_SECONDS", "3"))
 
 
@@ -461,11 +464,6 @@ def split_discord_text(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[st
     return chunks or [""]
 
 
-@asynccontextmanager
-async def _noop_typing():
-    yield
-
-
 async def send_interaction_text(interaction: discord.Interaction, text: str):
     """Send a deferred interaction response in Discord-sized chunks."""
     for chunk in split_discord_text(text):
@@ -482,6 +480,7 @@ class BuddyBot(commands.Bot):
         super().__init__(command_prefix=BOT_PREFIX, intents=intents)
         self.gemini_client = gemini_client
         self._gemini_slots = asyncio.Semaphore(GEMINI_MAX_CONCURRENCY)
+        self._chat_slots = asyncio.Semaphore(GEMINI_CHAT_MAX_CONCURRENCY)
         self._cooldowns: dict[tuple[int, int], float] = {}
 
     async def setup_hook(self):
@@ -499,7 +498,13 @@ class BuddyBot(commands.Bot):
             )
         return self.gemini_client
 
-    async def _run_gemini(self, operation: Callable, *args, model: str = GEMINI_MODEL):
+    async def _run_gemini(
+        self,
+        operation: Callable,
+        *args,
+        model: str = GEMINI_MODEL,
+        slots: asyncio.Semaphore | None = None,
+    ):
         """Bound and time an SDK request with optional fallback model.
 
         Args:
@@ -516,23 +521,29 @@ class BuddyBot(commands.Bot):
         models_to_try = [model]
         if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != model:
             models_to_try.append(GEMINI_FALLBACK_MODEL)
+        slots = slots or self._gemini_slots
 
         last_exception = None
         for attempt, model_name in enumerate(models_to_try):
+            request_started = time.perf_counter()
             # Acquire semaphore for this attempt
             try:
-                await asyncio.wait_for(
-                    self._gemini_slots.acquire(),
-                    timeout=GEMINI_TIMEOUT_SECONDS,
-                )
+                await asyncio.wait_for(slots.acquire(), timeout=GEMINI_TIMEOUT_SECONDS)
             except asyncio.TimeoutError as exc:
                 raise RuntimeError("Buddy is busy, try again in a moment 💀") from exc
 
             try:
+                api_started = time.perf_counter()
                 # Pass self as first arg since operation is a bound method
                 result = operation(model_name, *args)
                 if inspect.isawaitable(result):
-                    return await asyncio.wait_for(result, timeout=GEMINI_TIMEOUT_SECONDS)
+                    result = await asyncio.wait_for(result, timeout=GEMINI_TIMEOUT_SECONDS)
+                api_ms = (time.perf_counter() - api_started) * 1000
+                total_ms = (time.perf_counter() - request_started) * 1000
+                print(
+                    f"Gemini latency operation={getattr(operation, '__name__', 'request')} "
+                    f"model={model_name} api_ms={api_ms:.0f} total_ms={total_ms:.0f}"
+                )
                 return result
             except Exception as exc:
                 last_exception = exc
@@ -558,7 +569,7 @@ class BuddyBot(commands.Bot):
                     # Re-raise the exception
                     raise
             finally:
-                self._gemini_slots.release()
+                slots.release()
 
         # If we exhausted all models, raise the last exception
         assert last_exception is not None, "No models were attempted"
@@ -647,14 +658,14 @@ class BuddyBot(commands.Bot):
     ) -> str:
         context = prompt
         if reply_context:
-            context = f"Message being replied to:\n{reply_context}\n\nUser:\n{prompt}"
+            relevant_context = reply_context[-REPLY_CONTEXT_MAX_CHARS:]
+            context = f"Message being replied to:\n{relevant_context}\n\nUser:\n{prompt}"
         response = await self._gemini().aio.models.generate_content(
             model=model,
             contents=context,
             config=types.GenerateContentConfig(
                 system_instruction=get_system_instruction(language),
-                # Tokens are not words; leave room for Hinglish and detailed answers.
-                max_output_tokens=max(512, CHAT_MAX_WORDS * 8),
+                max_output_tokens=CHAT_MAX_OUTPUT_TOKENS,
                 temperature=0.9,
             ),
         )
@@ -668,7 +679,14 @@ class BuddyBot(commands.Bot):
         test_operation = self.__dict__.get("_ask_gemini_sync")
         operation = test_operation or self._ask_gemini_async
         try:
-            return await self._run_gemini(operation, prompt, reply_context, language)
+            return await self._run_gemini(
+                operation,
+                prompt,
+                reply_context,
+                language,
+                model=GEMINI_CHAT_MODEL,
+                slots=self._chat_slots,
+            )
         except Exception as exc:
             print("Gemini request error:", repr(exc))
             return get_failure_reply(language)
@@ -726,22 +744,25 @@ class BuddyBot(commands.Bot):
         if self._on_cooldown(message):
             return
         language = detect_language(prompt)
-        typing = getattr(message.channel, "typing", None)
-        async with (typing() if typing else _noop_typing()):
-            try:
-                if allow_room and is_room_request_candidate(prompt):
-                    room_reply = await self.create_room_reply(prompt)
-                    if room_reply is not None:
-                        await self._send_reply(message, room_reply)
-                        return
-                    if not allow_chat:
-                        return
-                if allow_chat:
-                    reply = await self.ask_gemini(prompt, reply_context, language)
-                    await self._send_reply(message, reply)
-            except Exception as exc:
-                print("Buddy request error:", repr(exc))
-                await self._send_reply(message, get_failure_reply(language))
+        request_started = time.perf_counter()
+        try:
+            if allow_room and is_room_request_candidate(prompt):
+                room_reply = await self.create_room_reply(prompt)
+                if room_reply is not None:
+                    await self._send_reply(message, room_reply)
+                    return
+                if not allow_chat:
+                    return
+            if allow_chat:
+                reply = await self.ask_gemini(prompt, reply_context, language)
+                await self._send_reply(message, reply)
+        except Exception as exc:
+            print("Buddy request error:", repr(exc))
+            await self._send_reply(message, get_failure_reply(language))
+        finally:
+            total_ms = (time.perf_counter() - request_started) * 1000
+            route = "room-or-chat" if allow_room else "chat"
+            print(f"Buddy latency route={route} total_ms={total_ms:.0f}")
 
     async def on_message(self, message: discord.Message):
         if message.author.bot:

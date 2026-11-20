@@ -37,12 +37,16 @@ Set these variables in `.env`:
 DISCORD_TOKEN=your_discord_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_CHAT_MODEL=gemini-3.5-flash-lite
 CHAT_MAX_WORDS=25
+CHAT_MAX_OUTPUT_TOKENS=192
+REPLY_CONTEXT_MAX_CHARS=600
 BOT_PREFIX=/
 CHAT_CHANNEL_IDS=
 ROOM_REQUEST_CHANNEL_IDS=
 GEMINI_TIMEOUT_SECONDS=20
 GEMINI_MAX_CONCURRENCY=4
+GEMINI_CHAT_MAX_CONCURRENCY=8
 MESSAGE_COOLDOWN_SECONDS=3
 ```
 
@@ -53,10 +57,12 @@ comma-separated channel IDs where Buddy should answer normal messages without
 a mention, and `ROOM_REQUEST_CHANNEL_IDS` for channels dedicated to room
 requests. A channel can appear in both lists.
 
-Gemini calls use the SDK's asynchronous client with an HTTP timeout, bounded
-concurrency, and a per-user/channel cooldown to prevent duplicate bursts and
-bot loops. A timed-out request is cancelled at the asyncio task boundary; the
-SDK/network layer determines whether its underlying transport cancels.
+Gemini calls use the SDK's asynchronous client with an HTTP timeout, separate
+chat/room concurrency limits, bounded reply context, and a per-user/channel
+cooldown to prevent duplicate bursts and bot loops. Chat and request latency
+are logged as durations only; message contents and API keys are never logged.
+A timed-out request is cancelled at the asyncio task boundary; the SDK/network
+layer determines whether its underlying transport cancels.
 
 ## Run
 

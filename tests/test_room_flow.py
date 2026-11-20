@@ -115,7 +115,7 @@ def test_chat_generation_uses_short_response_instruction_and_token_headroom():
     config = calls[0]["config"]
     assert "5–20 words" in config.system_instruction
     assert "never exceed 25 words" in config.system_instruction
-    assert config.max_output_tokens == 512
+    assert config.max_output_tokens == 192
 
 
 def test_unmentioned_message_is_ignored(monkeypatch):
