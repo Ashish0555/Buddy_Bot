@@ -61,6 +61,8 @@ class RoomIntent(BaseModel):
     players: int | None = None
     round_format: Literal["timer", "score"] | None = None
     value: int | None = None
+    match_duration: int | None = None
+    score_target: int | None = None
     teams: bool | None = None
     enabled_weapons: list[str] = Field(default_factory=list)
 
@@ -97,7 +99,48 @@ def _get_arena_id(map_name: str) -> str:
     return normalize_arena(normalized)
 
 
+def _mode_aware_map_name(map_name: str, mode: str) -> str:
+    """Convert shared map names to the variant requested by the game mode."""
+    normalized = _normalize_map_name(map_name)
+
+    if mode == "ctf":
+        if normalized == "smash fort" or normalized == "sf":
+            return "smash fort ctf"
+        if normalized == "smash island":
+            return "smash island ctf"
+        if normalized in {"graveyard", "the graveyard"}:
+            return "graveyard ctf"
+        if normalized == "lava pit":
+            return "lava pit ctf"
+        if normalized == "temples":
+            return "sky arena temples ctf"
+        if normalized == "tunnels":
+            return "sky arena tunnels ctf"
+    else:
+        if normalized == "smash fort ctf":
+            return "smash fort"
+        if normalized == "smash island ctf":
+            return "smash island"
+        if normalized == "graveyard ctf":
+            return "the graveyard"
+        if normalized == "lava pit ctf":
+            return "lava pit"
+        if normalized == "sky arena temples ctf":
+            return "temples"
+        if normalized == "sky arena tunnels ctf":
+            return "tunnels"
+
+    return normalized
+
+
 _TEXT_MAP_ALIASES = (
+    ("smash fort ctf", "smash fort ctf"),
+    ("ctf smash fort", "smash fort ctf"),
+    ("fort ctf", "smash fort ctf"),
+    ("ctf fort", "smash fort ctf"),
+    ("smash fort ffa", "smash fort"),
+    ("ffa smash fort", "smash fort"),
+    ("smash fort", "smash fort"),
     ("steky's speedway", "steky's speedway"),
     ("stekys speedway", "steky's speedway"),
     ("stekysspeedway", "steky's speedway"),
@@ -119,19 +162,32 @@ def _extract_map_from_text(text: str) -> str | None:
     return None
 
 
-def _extract_abbreviated_settings(text: str) -> dict:
-    """Extract abbreviated settings like st20, tm10 from text."""
-    result = {}
-    # st20 = score target 20, tm20 = timer 20
-    score_match = re.search(r"\bst(\d+)\b", text.lower())
+def _extract_round_settings(text: str) -> dict:
+    """Extract timer and score target as independent settings."""
+    result: dict[str, int | str] = {}
+
+    timer_match = re.search(
+        r"\b(\d+)\s*(?:min|mins|minute|minutes)\b",
+        text.lower(),
+    )
+    if timer_match:
+        result["match_duration"] = int(timer_match.group(1))
+
+    tm_match = re.search(r"\btm\s*(\d+)\b", text.lower())
+    if tm_match:
+        result["match_duration"] = int(tm_match.group(1))
+
+    score_match = re.search(r"\bst\s*(\d+)\b", text.lower())
     if score_match:
+        result["score_target"] = int(score_match.group(1))
+
+    if "match_duration" in result:
+        result["round_format"] = "timer"
+        result["value"] = int(result["match_duration"])
+    elif "score_target" in result:
         result["round_format"] = "score"
-        result["value"] = int(score_match.group(1))
-    else:
-        timer_match = re.search(r"\btm(\d+)\b", text.lower())
-        if timer_match:
-            result["round_format"] = "timer"
-            result["value"] = int(timer_match.group(1))
+        result["value"] = int(result["score_target"])
+
     return result
 
 
@@ -181,6 +237,11 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
     has_player_count = bool(re.search(r"\b\d+\s*(?:player|players|bande|bandon|logo|logon)\b", normalized))
     has_team_setting = bool(re.search(r"\b(?:team|bina\s+team|without\s+team|no\s+team)\b", normalized))
     has_abbreviated = bool(re.search(r"\b(?:st|tm)\d+\b", normalized))
+    has_match_duration = bool(re.search(
+        r"\b\d+\s*(?:min|mins|minute|minutes)\b",
+        normalized,
+    ))
+    has_score_target = bool(re.search(r"\bst\s*\d+\b", normalized))
     has_random = bool(re.search(r"\b(?:random|any)\b", normalized))
     
     # High confidence if we have action + (mode or map or room noun) OR player count + mode/map/room noun
@@ -192,30 +253,44 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
         (_extract_map_from_text(normalized) is not None and not has_mode and not has_action
          and len(normalized.split()) <= 3) or
         (has_random and has_mode) or
-        (has_abbreviated and (has_mode or has_map_shortform or has_map_name))
+        (has_abbreviated and (has_mode or has_map_shortform or has_map_name)) or
+        (has_match_duration and has_map_name) or
+        (has_score_target and has_map_name)
     )
     
     if not is_high_confidence:
         return None
     
+    # Extract mode before the map so mode-specific variants take priority.
+    mode = None
+    if re.search(r"\bctf\b", normalized):
+        mode = "ctf"
+    elif re.search(r"\bffa\b", normalized):
+        mode = "ffa"
+
     # Extract map
     map_name = None
-    # Check shortforms first
-    shortform_match = re.search(
-        r"\b(sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b",
-        normalized
-    )
-    if shortform_match:
-        map_name = shortform_match.group(1)
+    explicit_map = _extract_map_from_text(normalized)
+    if explicit_map is not None:
+        map_name = explicit_map
     else:
-        explicit_map = _extract_map_from_text(normalized)
-        if explicit_map is not None:
-            map_name = explicit_map
+        # Check exact CTF/FFA variants before shared short names.
+        shortform_match = re.search(
+            r"\b(sfc|sic|gyc|lpc|tec|tuc|sf|si|gp|dz|lp|pp|sd|te|tu|t|ss|gy|sns)\b",
+            normalized
+        )
+        if shortform_match:
+            map_name = shortform_match.group(1)
         else:
-            # Check full map names
             map_patterns = [
-                (r"\bskate\s+city\b", "skate city"),
+                (r"\bsmash\s+fort\s+ctf\b", "smash fort ctf"),
+                (r"\bctf\s+smash\s+fort\b", "smash fort ctf"),
+                (r"\bfort\s+ctf\b", "smash fort ctf"),
+                (r"\bctf\s+fort\b", "smash fort ctf"),
+                (r"\bsmash\s+fort\s+ffa\b", "smash fort"),
+                (r"\bffa\s+smash\s+fort\b", "smash fort"),
                 (r"\bsmash\s+fort\b", "smash fort"),
+                (r"\bskate\s+city\b", "skate city"),
                 (r"\bsmash\s+island\b", "smash island"),
                 (r"\bgravel\s+pit\b", "gravel pit"),
                 (r"\bdropzone\b", "dropzone"),
@@ -245,13 +320,9 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
                 if re.search(pattern, normalized):
                     map_name = name
                     break
-    
-    # Extract mode
-    mode = None
-    if re.search(r"\bctf\b", normalized):
-        mode = "ctf"
-    elif re.search(r"\bffa\b", normalized):
-        mode = "ffa"
+
+    if map_name is not None and mode is not None:
+        map_name = _mode_aware_map_name(map_name, mode)
     
     # Extract players
     players = None
@@ -266,10 +337,12 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
     elif re.search(r"\bteam\b", normalized) and not re.search(r"\bbina\s+team\b|\bwithout\s+team\b|\bno\s+team\b", normalized):
         teams = True
     
-    # Extract abbreviated settings (st20, tm10)
-    abbreviated = _extract_abbreviated_settings(normalized)
-    round_format = abbreviated.get("round_format")
-    value = abbreviated.get("value")
+    # Extract timer and score target independently, regardless of word order.
+    round_settings = _extract_round_settings(normalized)
+    match_duration = round_settings.get("match_duration")
+    score_target = round_settings.get("score_target")
+    round_format = round_settings.get("round_format")
+    value = round_settings.get("value")
     
     # If we have high confidence, return the intent (even with just defaults)
     # This handles generic "make a room" requests
@@ -281,6 +354,8 @@ def _deterministic_room_intent(text: str) -> RoomIntent | None:
             players=players,
             round_format=round_format,
             value=value,
+            match_duration=match_duration,
+            score_target=score_target,
             teams=teams,
             enabled_weapons=[],
         )
@@ -312,10 +387,13 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
     if map_provided:
         assert intent.map is not None
         # Canonicalize aliases before checking CTF verification.
-        map_name = _normalize_map_name(intent.map)
+        map_name = _mode_aware_map_name(intent.map, intent.mode) if intent.mode is not None else _normalize_map_name(intent.map)
         try:
             arena_id = _get_arena_id(map_name)
-            map_is_ctf_verified = arena_id in CTF_VERIFIED_ARENA_IDS
+            map_is_ctf_verified = (
+                arena_id in CTF_VERIFIED_ARENA_IDS
+                or map_name in {"smash fort", "smash fort ctf"}
+            )
             map_is_ctf_allowlisted = is_ctf_allowlisted(map_name)
         except ValueError as exc:
             raise RoomIntentError(str(exc)) from exc
@@ -354,7 +432,32 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
                     "Use FFA or pick a CTF-compatible map."
                 )
 
-    if intent.round_format is None:
+    # Select the mode-specific map variant before the final arena lookup.
+    if map_provided:
+        assert intent.map is not None
+        mode_map_name = _mode_aware_map_name(intent.map, mode)
+        try:
+            arena = normalize_arena(mode_map_name)
+        except ValueError as exc:
+            raise RoomIntentError(str(exc)) from exc
+    else:
+        arena = None
+
+    match_duration = intent.match_duration
+    score_target = intent.score_target
+
+    if match_duration is None and intent.round_format == "timer" and intent.value is not None:
+        match_duration = intent.value
+    if score_target is None and intent.round_format == "score" and intent.value is not None:
+        score_target = intent.value
+
+    if match_duration is not None:
+        round_format = "timer"
+        value = match_duration
+    elif score_target is not None:
+        round_format = "score"
+        value = score_target
+    elif intent.round_format is None:
         round_format = "timer"
         if intent.value is not None:
             value = intent.value
@@ -370,6 +473,15 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
             raise RoomIntentError("Timer kitne minutes ka chahiye?")
         value = intent.value
 
+    if match_duration is not None and match_duration not in VALID_TIMERS:
+        raise RoomIntentError(
+            f"Timer must be one of: {sorted(VALID_TIMERS)}."
+        )
+    if score_target is not None and score_target not in VALID_SCORE_TARGETS:
+        raise RoomIntentError(
+            f"Score target must be one of: {sorted(VALID_SCORE_TARGETS)}."
+        )
+
     valid_values = VALID_TIMERS if round_format == "timer" else VALID_SCORE_TARGETS
     if value not in valid_values:
         label = "Timer" if round_format == "timer" else "Score target"
@@ -378,12 +490,7 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
         )
 
     # Determine arena with mode-aware random selection
-    if intent.map:
-        try:
-            arena = normalize_arena(_normalize_map_name(intent.map))
-        except ValueError as exc:
-            raise RoomIntentError(str(exc)) from exc
-    else:
+    if arena is None:
         chooser = random_choice or random.choice
         if mode == "ctf":
             # Random CTF map - only from verified CTF maps
@@ -397,6 +504,8 @@ def resolve_room_intent(intent: RoomIntent, *, random_choice=None) -> dict:
         "game_mode": mode,
         "round_format": round_format,
         "value": value,
+        "match_duration": match_duration,
+        "score_target": score_target,
         "arena": arena,
         "max_players": players,
         "teams": teams if mode == "ffa" else False,

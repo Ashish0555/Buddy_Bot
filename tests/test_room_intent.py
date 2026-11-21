@@ -6,7 +6,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "api"))
 
-from room_creator import DEFAULT_WEAPONS, WEAPON_BITS, encode_ffa_mode
+from room_creator import (
+    DEFAULT_WEAPONS,
+    WEAPON_BITS,
+    encode_ctf_mode,
+    encode_ffa_mode,
+)
 from room_intent import (
     RoomIntent,
     RoomIntentError,
@@ -136,3 +141,100 @@ def test_steky_and_skate_map_aliases_are_exact_and_order_independent(
     assert intent is not None
     assert intent.map
     assert resolve_room_intent(intent)["arena"] == expected_arena
+
+
+@pytest.mark.parametrize(
+    "text,expected_mode,expected_arena",
+    [
+        ("Smash Fort CTF", "ctf", "smashfortctf"),
+        ("CTF Smash Fort", "ctf", "smashfortctf"),
+        ("Fort CTF", "ctf", "smashfortctf"),
+        ("CTF Fort", "ctf", "smashfortctf"),
+        ("Smash Fort FFA", "ffa", "smashfort"),
+        ("FFA Smash Fort", "ffa", "smashfort"),
+    ],
+)
+def test_smash_fort_mode_specific_aliases(
+    text, expected_mode, expected_arena
+):
+    intent = _deterministic_room_intent(text)
+    assert intent is not None
+    assert intent.mode == expected_mode
+    room = resolve_room_intent(intent)
+    assert room["game_mode"] == expected_mode
+    assert room["arena"] == expected_arena
+
+
+def test_smash_fort_ctf_and_ffa_have_different_room_payload_arenas():
+    ctf_url = create_room_from_intent(
+        RoomIntent(is_room_request=True, map="smash fort ctf", mode="ctf")
+    )
+    ffa_url = create_room_from_intent(
+        RoomIntent(is_room_request=True, map="smash fort", mode="ffa")
+    )
+    ctf_query = parse_qs(urlparse(ctf_url).query)
+    ffa_query = parse_qs(urlparse(ffa_url).query)
+    assert ctf_query["arena"] == ["smashfortctf"]
+    assert ffa_query["arena"] == ["smashfort"]
+
+
+@pytest.mark.parametrize(
+    "text,expected_format,expected_value",
+    [
+        ("Lava Pit 10 min", "timer", 10),
+        ("FFA Lava Pit 10 minutes", "timer", 10),
+        ("Lava Pit ST 3", "score", 3),
+        ("Lava Pit ST 3 10 min", "timer", 10),
+        ("Lava Pit 10 min ST 3", "timer", 10),
+        ("Lava Pit FFA", "timer", 6),
+    ],
+)
+def test_natural_language_timer_and_score_target_settings(
+    text, expected_format, expected_value
+):
+    intent = _deterministic_room_intent(text)
+    assert intent is not None
+    room = resolve_room_intent(intent)
+    assert room["round_format"] == expected_format
+    assert room["value"] == expected_value
+
+
+def test_timer_and_score_target_are_parsed_independently():
+    intent = _deterministic_room_intent("Lava Pit 10 min ST 3")
+    assert intent is not None
+    room = resolve_room_intent(intent)
+    assert room["match_duration"] == 10
+    assert room["score_target"] == 3
+    assert room["round_format"] == "timer"
+    assert room["value"] == 10
+
+
+@pytest.mark.parametrize(
+    "text,expected_mode",
+    [
+        ("Lava Pit 10 min", "ctf"),
+        ("FFA Lava Pit 10 minutes", "ffa"),
+        ("Lava Pit FFA", "ffa"),
+    ],
+)
+def test_explicit_timer_settings_reach_room_payload(text, expected_mode):
+    intent = _deterministic_room_intent(text)
+    assert intent is not None
+    url = create_room_from_intent(intent)
+    query = parse_qs(urlparse(url).query)
+    assert query["arena"] == ["lavapitctf"]
+    room = resolve_room_intent(intent)
+    if expected_mode == "ffa":
+        expected_mode_code = encode_ffa_mode(
+            room["round_format"],
+            room["value"],
+            teams=room["teams"],
+            max_players=room["max_players"],
+        )
+    else:
+        expected_mode_code = encode_ctf_mode(
+            room["round_format"],
+            room["value"],
+            max_players=room["max_players"],
+        )
+    assert query["mode"] == [str(expected_mode_code)]

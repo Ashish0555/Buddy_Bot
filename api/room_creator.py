@@ -286,7 +286,7 @@ ARENA_IDS = {
     "tunnels": "skyarena-tunnels",
 
     # CTF Maps (VERIFIED - game-tested)
-    "smash fort ctf": "smashfort",
+    "smash fort ctf": "smashfortctf",
     "smash island ctf": "smashisland",
     "graveyard ctf": "graveyard",
     "lava pit ctf": "lavapitctf",
@@ -318,7 +318,7 @@ ARENA_IDS = {
 # Key: normalized map name (lowercase, as used in ARENA_IDS)
 # Value: arena ID
 CTF_VERIFIED_MAPS = {
-    "smash fort ctf": "smashfort",
+    "smash fort ctf": "smashfortctf",
     "smash island ctf": "smashisland",
     "graveyard ctf": "graveyard",
     "lava pit ctf": "lavapitctf",
@@ -417,6 +417,10 @@ def normalize_arena(arena: str) -> str:
 def is_ctf_verified(arena: str) -> bool:
     """Check if a map has a verified CTF arena ID mapping."""
     try:
+        key = " ".join(arena.strip().lower().replace("_", " ").split())
+        key = MAP_SHORTFORMS.get(key, key)
+        if key in {"smash fort", "sf"}:
+            return True
         arena_id = normalize_arena(arena)
         return arena_id in CTF_VERIFIED_ARENA_IDS
     except ValueError:
@@ -480,6 +484,8 @@ def create_room_url(
     teams: bool = False,
     weapons: int = DEFAULT_WEAPONS,
     room_id: str | None = None,
+    match_duration: int | None = None,
+    score_target: int | None = None,
 ) -> str:
     gm = game_mode.strip().lower()
 

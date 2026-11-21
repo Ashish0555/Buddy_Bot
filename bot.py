@@ -632,7 +632,17 @@ class BuddyBot(commands.Bot):
             # User-provided exact aliases take priority over model guesses.
             deterministic_intent = _deterministic_room_intent(prompt)
             if deterministic_intent is not None and deterministic_intent.map:
-                intent = intent.model_copy(update={"map": deterministic_intent.map})
+                updates = {"map": deterministic_intent.map}
+                if deterministic_intent.mode is not None:
+                    updates["mode"] = deterministic_intent.mode
+                if deterministic_intent.match_duration is not None:
+                    updates["match_duration"] = deterministic_intent.match_duration
+                if deterministic_intent.score_target is not None:
+                    updates["score_target"] = deterministic_intent.score_target
+                if deterministic_intent.round_format is not None:
+                    updates["round_format"] = deterministic_intent.round_format
+                    updates["value"] = deterministic_intent.value
+                intent = intent.model_copy(update=updates)
         
         try:
             url = create_room_from_intent(intent)

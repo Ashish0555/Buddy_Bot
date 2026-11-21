@@ -46,7 +46,7 @@ class TestCTFVerifiedMaps:
     """Test that all verified CTF maps are properly recognized."""
 
     @pytest.mark.parametrize("map_name,expected_arena", [
-        ("smash fort ctf", "smashfort"),
+        ("smash fort ctf", "smashfortctf"),
         ("smash island ctf", "smashisland"),
         ("graveyard ctf", "graveyard"),
         ("lava pit ctf", "lavapitctf"),
@@ -273,12 +273,11 @@ class TestShortformAliases:
         assert room["game_mode"] == "ffa"
 
     def test_explicit_ctf_on_sf_shortform_uses_same_arena(self):
-        """sf with explicit CTF uses same arena ID as sfc."""
+        """sf with explicit CTF uses the dedicated Smash Fort CTF arena."""
         room = resolve("sf", mode="ctf", players=4)
         assert room["game_mode"] == "ctf"
-        # Both sf and sfc map to smashfort arena ID
         from room_creator import normalize_arena
-        assert normalize_arena(room["arena"]) == "smashfort"
+        assert normalize_arena(room["arena"]) == "smashfortctf"
 
     @pytest.mark.parametrize("map_name", ["showdown", "SHOWDOWN", "Sky Arena Showdown"])
     def test_showdown_alias_selects_sky_arena_showdown_for_ctf(self, map_name):
