@@ -368,14 +368,22 @@ def test_detect_language_hinglish():
     assert bot.detect_language("reply in hinglish") == bot.Language.HINGLISH
 
 
+def test_single_hindi_word_always_triggers_hinglish():
+    assert bot.detect_language("Bhai FFA bana") == bot.Language.HINGLISH
+    assert bot.detect_language("Create room jaldi") == bot.Language.HINGLISH
+    assert bot.detect_language("Lava Pit me 10 min laga") == bot.Language.HINGLISH
+    assert bot.detect_language("Kya kar raha hai") == bot.Language.HINGLISH
+    assert bot.detect_language("Create FFA room") == bot.Language.ENGLISH
+
+
 def test_detect_language_mixed():
     """Test mixed language handling - dominant language wins."""
     # More English words
     assert bot.detect_language("hello bhai kya haal hai") == bot.Language.HINGLISH
     # More Hinglish words
     assert bot.detect_language("hi bhai kaise ho aap") == bot.Language.HINGLISH
-    # Explicit override wins
-    assert bot.detect_language("bhai kya haal hai reply in english") == bot.Language.ENGLISH
+    # Hindi/Hinglish priority beats explicit English override
+    assert bot.detect_language("bhai kya haal hai reply in english") == bot.Language.HINGLISH
     # Explicit Hindi override
     assert bot.detect_language("hello how are you reply in hindi") == bot.Language.HINDI
     # Explicit Hinglish override
@@ -605,10 +613,9 @@ def test_explicit_language_override(monkeypatch):
     # Hinglish message but explicit English override
     reply = asyncio.run(buddy.ask_gemini("bhai kya haal hai reply in english", language=bot.Language.HINGLISH))
     
-    # The detect_language should have caught the override
-    # Note: language is now passed explicitly, but we can test the detect function directly
+    # Hindi priority beats the English override
     lang = bot.detect_language("bhai kya haal hai reply in english")
-    assert lang == bot.Language.ENGLISH
+    assert lang == bot.Language.HINGLISH
 
 
 def test_gemini_primary_model_success(monkeypatch):

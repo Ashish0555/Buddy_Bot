@@ -161,123 +161,78 @@ class Language(StrEnum):
 
 
 def detect_language(text: str) -> Language:
-    """Detect the dominant language/writing style of the input text.
-
-    Returns:
-        Language.ENGLISH: Primarily English (Latin script, English words)
-        Language.HINDI: Primarily Hindi in Devanagari script
-        Language.HINGLISH: Mix of Roman Hindi/Urdu and English
-        Language.OTHER: Other languages/scripts
-    """
+    """Detect language/style, with any explicit Hindi content taking priority."""
     if not text or not text.strip():
         return Language.ENGLISH
 
-    # Check for explicit language override instructions
     lower = text.lower()
-    if re.search(r"\b(?:reply|respond|answer)\s+in\s+(english|hindi|hinglish)\b", lower):
-        lang_map = {"english": Language.ENGLISH, "hindi": Language.HINDI, "hinglish": Language.HINGLISH}
-        for k, v in lang_map.items():
-            if k in lower:
-                return v
-
-    # Count characters by script
     devanagari = sum(1 for ch in text if "\u0900" <= ch <= "\u097F")
+
+    # Devanagari is an unconditional Hindi signal.
+    if devanagari:
+        return Language.HINDI
+
+    # Roman-script Hindi words are matched exactly.  One match is enough:
+    # gaming terms and English words are intentionally not in this set.
+    roman_hindi_words = {
+        "aaj", "aap", "ab", "abhi", "acha", "accha", "arey", "arre",
+        "bakchod", "bakchodi", "bande", "bandon", "bas", "bkl", "bc",
+        "bna", "banao", "bnade", "bnado", "bnao", "bnaegi", "bnaega", "bhai",
+        "bhaiya", "bhenchod", "bina", "bol", "bolo", "bohot", "badhiya",
+        "chahta", "chahti", "chahte", "chahiye", "chahie", "chal",
+        "chalo", "chalte", "chalta", "chalti", "chutiye",
+        "dekha", "dekho", "dost",
+        "haan", "ha", "hai", "hain", "hamara", "hamari", "hamare",
+        "har", "haar", "hota", "hoti", "hote", "hoon",
+        "jaldi", "jara", "jarur", "ji", "jitna", "jitne",
+        "kab", "kaise", "kaisa", "kaisi", "kahan", "karo", "kar",
+        "karna", "karte", "karta", "karti", "karunga", "karungi",
+        "khel", "khelna", "khelo", "kitna", "kitne", "kuch", "kuchh",
+        "kyu", "kyun", "kyunki", "kya",
+        "laga", "lga", "lagta", "lagti", "lagte", "le", "lekin", "lodu",
+        "madarchod", "magar", "mast", "mat", "mera", "meri",
+        "mere", "mitr", "mujhe", "mujh",
+        "nahi", "nhi", "nahin", "naam",
+        "pata",
+        "raha", "rahi", "rahe", "saale", "samajh", "suno", "sun",
+        "tera", "teri", "tere", "thoda", "thodi", "thode", "theek",
+        "thik", "toh", "tumhara", "tumhari", "tumhare", "tum",
+        "uska", "uski", "uske", "wala", "wali", "wale",
+        "yaar", "ye", "yeh", "woh", "wo", "zaroor", "jaruri",
+        # Common Hinglish grammar particles
+        "ka", "ke", "ki", "ko", "se", "liye", "par", "aur",
+    }
+    words = set(re.findall(r"[a-zA-Z]+", lower))
+    if words & roman_hindi_words:
+        return Language.HINGLISH
+    # "me" is both English and Hindi, so only treat it as Hindi when it
+    # appears in a clear game/map context rather than in ordinary English.
+    if "me" in words and re.search(
+        r"\b(?:lava\s+pit|smash\s+fort|smash\s+island|gravel\s+pit|"
+        r"dropzone|skate\s+city|sf|si|gp|dz|lp|ffa|ctf|bande|khel)\b",
+        lower,
+    ):
+        return Language.HINGLISH
+
+    # Explicit language override is considered only after there is no Hindi
+    # word in the message.  This prevents an English instruction from
+    # contradicting the mandatory Hindi-priority rule.
+    override = re.search(r"\b(?:reply|respond|answer)\s+in\s+(english|hindi|hinglish)\b", lower)
+    if override:
+        return {
+            "english": Language.ENGLISH,
+            "hindi": Language.HINDI,
+            "hinglish": Language.HINGLISH,
+        }[override.group(1)]
+
+    # Count remaining scripts and English content for backward-compatible fallback.
     latin = sum(1 for ch in text if ch.isascii() and ch.isalpha())
     other_alpha = sum(1 for ch in text if ch.isalpha() and not ch.isascii() and not ("\u0900" <= ch <= "\u097F"))
 
     total_alpha = devanagari + latin + other_alpha
     if total_alpha == 0:
         return Language.ENGLISH
-
-    # Hindi in Devanagari
-    if devanagari / total_alpha > 0.5:
-        return Language.HINDI
-
-    # Check for Hinglish patterns (Roman Hindi words mixed with English)
-    hinglish_words = {
-        "hai", "hoon", "hain", "tha", "thi", "the", "kar", "karna", "karo", "kare",
-        "bnao", "bnado", "bnade", "bna", "de", "do", "chahiye", "chahie",
-        "kya", "kaise", "kaisa", "kaisi", "kahan", "kab", "kyun",
-        "acha", "accha", "theek", "thik", "mast", "badhiya",
-        "bhai", "bhaiya", "yaar", "dost", "mitr", "behen",
-        "ab", "to", "toh", "le", "ye", "yeh", "wo", "woh", "wohi",
-        "aur", "or", "par", "lekin", "magar", "kyunki", "kiunki",
-        "nahi", "nhi", "na", "haan", "han", "ji", "ha",
-        "chal", "chalo", "chale", "chalta", "chalti", "chalte",
-        "dekh", "dekho", "dekha", "sun", "suno", "suna", "bol", "bolo",
-        "kaun", "kaisa", "kitna", "kitne",
-        "mera", "meri", "mere", "tera", "teri", "tere", "uska", "uski",
-        "hamara", "hamari", "hamare", "tumhara", "tumhari", "tumhare",
-        "kuch", "kuchh", "thoda", "thodi", "thode", "bahut", "bohot",
-        "zaroor", "jarur", "zaroori", "jaruri", "chahta", "chahti", "chahte",
-        "chahiye", "chahie", "padta", "padti", "padte", "hota", "hoti", "hote",
-        # Gaming/room related words commonly used in Hinglish
-        "room", "match", "game", "play", "khel", "khelna", "khelo",
-        "map", "sf", "si", "gp", "dz", "lp", "ffa", "ctf",
-        "player", "players", "banda", "bande", "logo", "logon",
-        "timer", "minute", "score", "team", "teams", "weapon",
-        "please", "pls", "plz",
-        # Common Hinglish grammar words
-        "ka", "ke", "ki", "ko", "me", "se", "pe", "par", "liye",
-        # Slang/bakchod words for Hinglish detection
-        "bakchod", "bakchodi",
-        # Common shortforms/slang
-        "bkl", "bk", "bna", "bn", "bnao", "bnae", "bnaega", "bnaegi",
-    }
-
-    # English words that should NOT count as Hinglish even if in hinglish_words
-    # (e.g., "ok", "okay" are common in English too)
-    hinglish_exclude = {"ok", "okay"}
-
-    # Gaming terms that are common in both English and Hinglish
-    # Should not count as Hinglish indicators on their own
-    gaming_terms = {"room", "match", "game", "play", "map", "sf", "si", "gp", "dz", "lp",
-                    "ffa", "ctf", "player", "players", "timer", "minute", "score",
-                    "team", "teams", "weapon", "random"}
-
-    words = set(re.findall(r"[a-zA-Z]+", text.lower()))
-    hinglish_count = sum(1 for w in words if w in hinglish_words and w not in hinglish_exclude and w not in gaming_terms)
-
-    # Common English stop words that shouldn't count as "English content"
-    english_stopwords = {"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-                         "have", "has", "had", "do", "does", "did", "will", "would", "could",
-                         "should", "may", "might", "must", "can", "shall", "i", "you", "he",
-                         "she", "it", "we", "they", "me", "him", "her", "us", "them", "my",
-                         "your", "his", "her", "its", "our", "their", "this", "that", "these",
-                         "those", "and", "or", "but", "if", "then", "else", "when", "where",
-                         "why", "how", "what", "who", "which", "there", "here", "not", "no",
-                         "yes", "so", "very", "much", "many", "more", "most", "less", "least",
-                         "just", "only", "also", "even", "still", "yet", "already", "never",
-                         "always", "sometimes", "often", "usually", "rarely", "seldom"}
-
-    # Count meaningful English words (non-stopwords, not in hinglish_words)
-    english_content_words = [w for w in words if w not in english_stopwords and w not in hinglish_words and len(w) > 2]
-    english_count = len(english_content_words)
-
-    # If significant Hinglish vocabulary present (at least 2 words, more than English content)
-    if hinglish_count >= 2 and hinglish_count >= english_count:
-        return Language.HINGLISH
-
-    # If mostly English content words
-    if english_count > hinglish_count and latin / total_alpha > 0.3:
-        return Language.ENGLISH
-
-    # For short messages with only common English words (hi, hey, hello, thanks, ok, etc.)
-    # and no Hinglish markers, default to English
-    if hinglish_count == 0 and english_count > 0:
-        return Language.ENGLISH
-
-    # Check if it's a simple greeting or common English phrase
-    simple_english = {"hi", "hey", "hello", "thanks", "thank", "ok", "okay", "yes", "no", "yo", "sup", "hru", "gm", "gn", "bye", "good", "morning", "night", "how", "are", "you", "doing", "what", "up"}
-    if words.issubset(simple_english | english_stopwords) and hinglish_count == 0:
-        return Language.ENGLISH
-
-    # Default to English for ambiguous short messages with Latin script
-    # (only if no Hinglish markers found)
-    if latin > 0 and hinglish_count == 0:
-        return Language.ENGLISH
-
-    return Language.OTHER
+    return Language.ENGLISH
 
 
 def get_system_instruction(language: Language) -> str:
@@ -319,6 +274,8 @@ Roast gameplay, losses, or challenges when invited; keep it playful."""
     elif language == Language.HINGLISH:
         return base + """
 Respond in natural Hinglish (Roman Hindi/Urdu mixed with English).
+MANDATORY HINDI PRIORITY: because the user's message contains at least one Hindi/Roman-Hindi word,
+every part of this reply must stay in natural Hinglish. Do not randomly switch to English.
 Sound like a full-bakchod Indian gaming friend: witty, chaotic, casual, and mischievous.
 Use words like bc, bkl, saale, or chutiye when the user invites that banter,
 but keep it focused on gameplay and never use hateful slurs or threats.
@@ -352,6 +309,36 @@ def get_failure_reply(language: Language) -> str:
         return GEMINI_FAILURE_REPLY_HINDI
     else:  # HINGLISH or OTHER
         return GEMINI_FAILURE_REPLY_HINGLISH
+
+
+def get_room_error_reply(language: Language, error: Exception) -> str:
+    """Localize common room-setting errors for Hindi/Hinglish requests."""
+    message = str(error)
+    if language == Language.HINGLISH:
+        if "Player count" in message:
+            return "Bhai player count sahi nahi hai. 2, 3, 4, 6, ya 8 player hi choose kar."
+        if "Score target" in message:
+            return "Score target kitna chahiye? 1, 3, 6, 10, ya 20 choose kar."
+        if "Timer" in message:
+            return "Timer kitne minutes ka chahiye? 3, 6, 10, ya 20 min choose kar."
+        if "Unknown weapon" in message:
+            return "Ye weapon support nahi karta. Dusra weapon naam de bhai."
+        if "Unknown/untested arena" in message or "map" in message.lower():
+            return "Ye map support nahi karta. SF, Lava Pit, Smash Fort, ya koi verified map bata."
+        return f"Abe bhai {message}"
+    if language == Language.HINDI:
+        if "Player count" in message:
+            return "खिलाड़ियों की संख्या सही नहीं है। 2, 3, 4, 6 या 8 चुनो।"
+        if "Score target" in message:
+            return "स्कोर टारगेट कितना चाहिए? 1, 3, 6, 10 या 20 चुनो।"
+        if "Timer" in message:
+            return "टाइमर कितने मिनट का चाहिए? 3, 6, 10 या 20 चुनो।"
+        if "Unknown weapon" in message:
+            return "यह हथियार सपोर्टेड नहीं है। दूसरा हथियार नाम बताओ।"
+        if "Unknown/untested arena" in message or "map" in message.lower():
+            return "यह मैप सपोर्टेड नहीं है। SF, Lava Pit, Smash Fort या कोई verified मैप बताओ।"
+        return f"रूम की जानकारी में समस्या है: {message}"
+    return message
 
 
 def extract_response_text(response) -> str | None:
@@ -652,7 +639,7 @@ class BuddyBot(commands.Bot):
             sentence = random.choice(get_room_responses(language, playful=is_playful)).format(map_name=map_name)
             return f"{sentence}\n{url}"
         except RoomIntentError as exc:
-            return str(exc)
+            return get_room_error_reply(language, exc)
 
     def _is_playful_context(self, prompt: str, language: Language) -> bool:
         """Detect if user is engaging in playful banter/roasting."""
@@ -696,9 +683,14 @@ class BuddyBot(commands.Bot):
 
     async def ask_gemini(self, prompt: str, reply_context: str | None = None, language: Language | None = None) -> str:
         # Kept as a test seam for existing mocked tests; production uses the async SDK.
-        # Auto-detect language if not provided
-        if language is None:
-            language = detect_language(prompt)
+        # Re-evaluate the whole user context. A Hindi word always overrides
+        # caller-supplied language/style or an earlier English switch.
+        combined_text = f"{reply_context}\n{prompt}" if reply_context else prompt
+        detected_language = detect_language(combined_text)
+        if detected_language in (Language.HINDI, Language.HINGLISH):
+            language = detected_language
+        elif language is None:
+            language = detected_language
         test_operation = self.__dict__.get("_ask_gemini_sync")
         operation = test_operation or self._ask_gemini_async
         try:
